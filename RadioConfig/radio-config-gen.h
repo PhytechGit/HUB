@@ -716,7 +716,7 @@
   0x02 /* NUM_PROPS                                                           */,\
   0x25 /* START_PROP                                                          */,\
   0x00 /* PKT_RX_FIELD_2_LENGTH,RX_FIELD_2_LENGTH[4:0],RX_FIELD_2_LENGTH[7:0] */,\
-  0x96 /* DATA1                                                               */\
+  0x1E /* DATA1                                                               */\
 }
 
 #define RADIO_CONFIG_SET_PROPERTY_PKT_RX_FIELD_2_LENGTH_LEN (6)

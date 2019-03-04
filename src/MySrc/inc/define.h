@@ -9,7 +9,6 @@
 #define SRC_MYSRC_DEFINE_H_
 
 #define DEBUG_MODE
-#define VERSION = {'H',2,19,1}
 
 typedef enum _SlotStatus
 {
@@ -17,6 +16,12 @@ typedef enum _SlotStatus
 	STATUS_STANDBY,
 	STATUS_BUSY,
 }SlotStatus;
+
+//typedef enum _ConfigStage
+//{
+//	CONFIG_STAGE_1,
+//	CONFIG_STAGE_2,
+//}ConfigStage;
 
 typedef enum _Headers
 {
@@ -37,7 +42,8 @@ typedef enum _WorkingMode
 	MODE_INSTALLATION,
 	MODE_LISTENING,
 	MODE_SENDING,
-	MODE_SLEEPING,
+//	MODE_SLEEPING,
+//	MODE_SYNC,
 }WorkingMode;
 
 typedef enum _MsgType
@@ -52,6 +58,14 @@ typedef enum _SensorStatus
 	STATUS_SEND_DATA,
 	STATUS_CELL_EMPTY,
 }SensorStatus;
+
+typedef enum _Task
+{
+	TASK_WAIT,
+	TASK_DO_JOB,
+	TASK_SLEEP,
+	TASK_SYNC,
+}Task;
 
 typedef union _Uint16toBytes
 {
@@ -112,12 +126,13 @@ typedef struct _sensor
 #define INDEX_DATA		10
 #define INDEX_TYPE		12
 #define INDEX_SLOT		10
-#define INDEX_TX_COUNTER	11
+#define INDEX_TX_COUNTER	12
 #define INDEX_RX_COUNTER	17
-#define INDEX_TX_CS		12
+#define INDEX_TX_CS		13
 #define INDEX_RSSI		21
 #define INDEX_STATUS	22
 #define INDEX_HUB_ID2	6
+#define INDEX_HUB_SLOT	13
 
 #define CELL_EMPTY	0
 #define CELL_BUSY	1
