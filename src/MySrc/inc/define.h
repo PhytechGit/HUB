@@ -7,14 +7,14 @@
 
 #ifndef SRC_MYSRC_DEFINE_H_
 #define SRC_MYSRC_DEFINE_H_
-
+#include "nvm.h"
 #define DEBUG_MODE
 
 typedef enum _SlotStatus
 {
-	STATUS_EMPTY,
-	STATUS_STANDBY,
-	STATUS_BUSY,
+	SLOT_STATUS_EMPTY,
+	SLOT_STATUS_STANDBY,
+	SLOT_STATUS_BUSY,
 }SlotStatus;
 
 //typedef enum _ConfigStage
@@ -54,9 +54,9 @@ typedef enum _MsgType
 
 typedef enum _SensorStatus
 {
-	STATUS_GOT_DATA,
-	STATUS_SEND_DATA,
-	STATUS_CELL_EMPTY,
+	SEN_STATUS_GOT_DATA,
+	SEN_STATUS_SEND_DATA,
+	SEN_STATUS_CELL_EMPTY,
 }SensorStatus;
 
 typedef enum _Task
@@ -72,6 +72,12 @@ typedef union _Uint16toBytes
 	uint16_t iVal;
     uint8_t bVal[2];
 }Uint16toBytes;
+
+typedef union _Int16toBytes
+{
+	int16_t iVal;
+    uint8_t bVal[2];
+}Int16toBytes;
 
 typedef union _Uint32toBytes
 {
@@ -93,6 +99,7 @@ typedef struct _sensor
 	uint8_t HstrData[10];
 	bool	IsData;
 	bool 	IsHstr;
+	bool	DailyCnct;
 	SensorStatus Status;
 } sensor;
 
@@ -101,6 +108,15 @@ typedef struct _sensor
 //todo - find the correct io
 #define GPIO_TCXO_PORT			gpioPortC
 #define GPIO_TCXO_PIN			10
+/////////////for card 102
+#define GPIO_MAIN_POWER_PORT	gpioPortF
+#define GPIO_MAIN_POWER_PIN		2
+#define GPIO_LED1_PORT			gpioPortF	//red light
+#define GPIO_LED1_PIN			3
+#define GPIO_LED2_PORT			gpioPortF	//yellow light
+#define GPIO_LED2_PIN			4
+#define GPIO_BTN_PORT 		gpioPortA
+#define GPIO_BTN_PIN		1
 
 #define IRG_SLOTS		0x38007
 #define NOT_IRG_SLOTS	0x3FFC7FF8
@@ -119,25 +135,33 @@ typedef struct _sensor
 #define TYPE_AIR_TMP_ALRTS	84
 #define TYPE_IRRIGATION		85
 
-#define INDEX_HEADER	0
-#define INDEX_SIZE		1
-#define INDEX_TO_ADDRESS	2
-#define INDEX_FROM_ADDRESS	6
-#define INDEX_DATA		10
-#define INDEX_TYPE		12
-#define INDEX_SLOT		10
-#define INDEX_TX_COUNTER	12
-#define INDEX_RX_COUNTER	17
-#define INDEX_TX_CS		13
-#define INDEX_RSSI		21
-#define INDEX_STATUS	22
-#define INDEX_HUB_ID2	6
-#define INDEX_HUB_SLOT	13
+#define FIRST_FIELD		0
+#define FIRST_FIELD_LEN	1
+
+#define INDEX_HEADER	FIRST_FIELD_LEN+0
+#define INDEX_SIZE		FIRST_FIELD_LEN+1
+#define INDEX_TO_ADDRESS	FIRST_FIELD_LEN+2
+#define INDEX_FROM_ADDRESS	FIRST_FIELD_LEN+6
+#define INDEX_DATA		FIRST_FIELD_LEN+13
+#define INDEX_BTR		FIRST_FIELD_LEN+10
+#define INDEX_NUM		FIRST_FIELD_LEN+12
+//#define INDEX_HISTORY		FIRST_FIELD_LEN+17
+#define INDEX_TYPE		FIRST_FIELD_LEN+12
+#define INDEX_SLOT		FIRST_FIELD_LEN+10
+#define INDEX_TX_COUNTER	FIRST_FIELD_LEN+12
+#define INDEX_RX_COUNTER	FIRST_FIELD_LEN+17
+#define INDEX_TX_CS		FIRST_FIELD_LEN+13
+#define INDEX_RSSI		FIRST_FIELD_LEN+21
+#define INDEX_STATUS	FIRST_FIELD_LEN+22
+#define INDEX_HUB_ID2	FIRST_FIELD_LEN+6
+#define INDEX_HUB_SLOT	FIRST_FIELD_LEN+12
+#define INDEX_MIN		FIRST_FIELD_LEN+10
+#define INDEX_SEC		FIRST_FIELD_LEN+11
 
 #define CELL_EMPTY	0
 #define CELL_BUSY	1
 #define MAX_MSG_IN_STACK	5
-#define MAX_MSG_LEN	21
+#define MAX_MSG_LEN	FIRST_FIELD_LEN+21
 
-
+#define MAX_SEND_RETRY	3
 #endif /* SRC_MYSRC_DEFINE_H_ */

@@ -48,6 +48,34 @@ void printMsg(const char* msg)
     	uart0Init();
     }
     uartSendBuffer(DBG_VCOM,(uint8_t *)msg, strlen(msg));
+    uartSendBuffer(DBG_VCOM,"\r\n", 2);
+#endif
+}
+
+void printParameterVal(const char* msg, uint8_t var)
+{
+//    char       msg[100];
+#ifdef DEBUG_MODE
+
+    if(!uartInitialized[DBG_VCOM]){// initialized uart0 (work with VCOM) for print debug
+    	uart0Init();
+    }
+    uartSendBuffer(DBG_VCOM,(uint8_t *)msg, strlen(msg));
+    PrintNum(var);
+    //uartSendBuffer(DBG_VCOM,"\r\n", 2);
+#endif
+}
+
+void PrintChar(const char* msg)
+{
+//    char       msg[100];
+#ifdef DEBUG_MODE
+
+    if(!uartInitialized[DBG_VCOM]){// initialized uart0 (work with VCOM) for print debug
+    	uart0Init();
+    }
+    uartSendBuffer(DBG_VCOM,(uint8_t *)msg, 1);
+
 #endif
 }
 
@@ -60,6 +88,7 @@ void printMsg1(uint8_t* msg, int len)
     	uart0Init();
     }
     uartSendBuffer(DBG_VCOM, msg, len);
+    uartSendBuffer(DBG_VCOM,"\r\n", 2);
 #endif
 }
 
@@ -97,34 +126,34 @@ void PrintNum(uint32_t val)
     	switch (s[i-1])
     	{
     	case 0:
-    		printMsg("0");
+    		PrintChar("0");
     		break;
     	case 1:
-    		printMsg("1");
+    		PrintChar("1");
     		break;
     	case 2:
-    		printMsg("2");
+    		PrintChar("2");
     		break;
     	case 3:
-    		printMsg("3");
+    		PrintChar("3");
     		break;
     	case 4:
-    		printMsg("4");
+    		PrintChar("4");
     		break;
     	case 5:
-    		printMsg("5");
+    		PrintChar("5");
     		break;
     	case 6:
-    		printMsg("6");
+    		PrintChar("6");
     		break;
     	case 7:
-    		printMsg("7");
+    		PrintChar("7");
     		break;
     	case 8:
-    		printMsg("8");
+    		PrintChar("8");
     		break;
     	case 9:
-    		printMsg("9");
+    		PrintChar("9");
     		break;
     	}
     }
