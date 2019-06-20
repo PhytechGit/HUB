@@ -52,7 +52,7 @@ void printMsg(const char* msg)
 #endif
 }
 
-void printParameterVal(const char* msg, uint8_t var)
+void printParameterVal(const char* msg, uint32_t var)
 {
 //    char       msg[100];
 #ifdef DEBUG_MODE
@@ -107,13 +107,13 @@ void printMsg2(uint8_t* msg, uint8_t len)
 void PrintNum(uint32_t val)
 {
 #ifdef DEBUG_MODE
-    char s[10];
+    char s[32];
     uint8_t i = 0;
-    if (val > 999999 )
-    {
-    	//printMsg("too big number");
-    	return;
-    }
+//    if (val > 999999 )
+//    {
+//    	//printMsg("too big number");
+//    	return;
+//    }
 
     do
     {

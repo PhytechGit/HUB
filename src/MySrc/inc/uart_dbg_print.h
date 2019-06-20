@@ -18,5 +18,5 @@ void printMsg(const char* msg);
 void printMsg1(uint8_t* msg, int len);
 void PrintNum(uint32_t val);
 void PrintIntNum(int32_t val);
-void printParameterVal(const char* msg, uint8_t var);
+void printParameterVal(const char* msg, uint32_t var);
 #endif /* UART_DBG_PRINT_H_ */
