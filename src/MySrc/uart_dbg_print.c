@@ -13,45 +13,68 @@
 #include "uart2.h"
 #include "uart2_config.h"
 #include "define.h"
+#include "qstdio.h"
 
-//#include "MyGlobalVars.h"
+char debugbuf[100];
+//const char* hex = "0123456789ABCDEF";
 
-/*void printDbg(const char* format, ...)
+void logTx(char c)
 {
-    char       msg[100];
-
-    if(!uartInitialized[DBG_VCOM]){// initialized uart0 (work with VCOM) for print debug
+	//SERIAL_DEBUG_WriteChar(c);
+#ifdef DEBUG_MODE
+	if(!uartInitialized[DBG_VCOM]){// initialized uart0 (work with VCOM) for print debug
     	uart0Init();
     }
-
-    va_list    args;
-    va_start(args, format);
-    vsnprintf(msg, sizeof(msg), format, args); // do check return value
-    va_end(args);
-#ifdef PRINT_DBG_CRLF
-    if(strcat(msg, "\r\n") != NULL){
-#endif
-    if(!uartSendBuffer(DBG_VCOM,(uint8_t *)msg, strlen(msg))){
-    	while(1);
-    }
-#ifdef PRINT_DBG_CRLF
-    }
+	uartSendByte(DBG_VCOM,c);
 #endif
 }
-*/
+
+//void logHexByte(uint8_t b)
+//{
+//	logTx(hex[(b >> 4) & 0xF]);
+//	logTx(hex[b & 0xF]);
+//	logTx(' ');
+//}
+
+void logStrRaw(const char* str)
+{
+	while (*str) {
+		logTx(*str++);
+	}
+}
+
+void logStr(const char* str)
+{
+	logStrRaw(str);
+	logStrRaw("\r\n");
+};
+
+void logd(const char* fmt, ...)
+{
+	va_list args;
+
+	va_start(args, fmt);
+	qprintfv(debugbuf, fmt, args);
+	va_end(args);
+
+	logStrRaw(debugbuf);
+	logStrRaw("\r\n");
+}
+
 void printMsg(const char* msg)
 {
+	logStr(msg);
 //    char       msg[100];
-#ifdef DEBUG_MODE
-
-    if(!uartInitialized[DBG_VCOM]){// initialized uart0 (work with VCOM) for print debug
-    	uart0Init();
-    }
-    uartSendBuffer(DBG_VCOM,(uint8_t *)msg, strlen(msg));
-    uartSendBuffer(DBG_VCOM,"\r\n", 2);
-#endif
+//#ifdef DEBUG_MODE
+//
+//    if(!uartInitialized[DBG_VCOM]){// initialized uart0 (work with VCOM) for print debug
+//    	uart0Init();
+//    }
+//    uartSendBuffer(DBG_VCOM,(uint8_t *)msg, strlen(msg));
+//    uartSendBuffer(DBG_VCOM,"\r\n", 2);
+//#endif
 }
-
+/*
 void printParameterVal(const char* msg, uint32_t var)
 {
 //    char       msg[100];
@@ -78,7 +101,7 @@ void PrintChar(const char* msg)
 
 #endif
 }
-
+*/
 void printMsg1(uint8_t* msg, int len)
 {
 //    char       msg[100];
@@ -104,6 +127,7 @@ void printMsg2(uint8_t* msg, uint8_t len)
     uartSendBuffer(DBG_VCOM, msg, len);
 #endif
 }
+/*
 void PrintNum(uint32_t val)
 {
 #ifdef DEBUG_MODE
@@ -228,7 +252,7 @@ void PrintIntNum(int32_t val)
 //    putchar1('\n');
 #endif
 }
-
+*/
 /*
 void printDbgCRLF(void)
 {

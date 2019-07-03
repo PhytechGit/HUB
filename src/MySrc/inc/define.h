@@ -103,7 +103,7 @@ typedef struct _sensor
 	SensorStatus Status;
 } sensor;
 
-#define MAX_TX_LEN	100
+#define MAX_TX_LEN	50
 
 //todo - find the correct io
 #define GPIO_TCXO_PORT			gpioPortC
