@@ -25,15 +25,15 @@ typedef enum _SlotStatus
 
 typedef enum _Headers
 {
-	HEADER_MSR = 		0xBA,
-	HEADER_MSR_ACK = 	0xBB,
-	HEADER_HST = 		0xBC,
-	HEADER_HST_ACK = 	0xBD,
+	HEADER_MSR = 		0xB1,
+	HEADER_MSR_ACK = 	0xB2,
+	HEADER_HST = 		0xB3,
+	HEADER_HST_ACK = 	0xB4,
 	HEADER_GETID = 		0xA6,
 	HEADER_GETID_ACK = 	0xA7,
 	HEADER_ID_OK = 		0xA8,
-	HEADER_SND_DATA = 	0xCA,
-	HEADER_SND_DATA_ACK = 0xCB,
+	HEADER_SND_DATA = 	0xC1,
+	HEADER_SND_DATA_ACK = 0xC2,
 }Headers;
 
 typedef enum _WorkingMode
@@ -159,9 +159,11 @@ typedef struct _sensor
 #define INDEX_MIN		FIRST_FIELD_LEN+10
 #define INDEX_SEC		FIRST_FIELD_LEN+11
 */
-#define INDEX_RSSI		FIRST_FIELD_LEN+21
-#define INDEX_STATUS	FIRST_FIELD_LEN+22
-#define MAX_MSG_LEN		FIRST_FIELD_LEN+23
+#define MAX_AMIT_MSG_LEN	23//sizeof(PrtlHdr) + sizeof(PayloadSenData)>sizeof(PayloadSenHistory)?sizeof(PayloadSenData):sizeof(PayloadSenHistory) + 1
+#define INDEX_RSSI		FIRST_FIELD_LEN+MAX_AMIT_MSG_LEN
+#define INDEX_STATUS	INDEX_RSSI+1
+#define MAX_MSG_LEN		INDEX_STATUS+1
+
 #define CELL_EMPTY	0
 #define CELL_BUSY	1
 #define MAX_MSG_IN_STACK	5

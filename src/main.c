@@ -55,6 +55,7 @@
 #include "nvm.h"
 #include "define.h"
 #include "ProtocolDef.h"
+#include "ProtocolMonitorDef.h"
 
 /* Push button callback functionns. */
 //static void GPIO_PB1_IRQHandler(uint8_t pin);
@@ -120,6 +121,9 @@ static uint8_t radioRxPkt[EZRADIO_FIFO_SIZE];
 #define APP_RTC_FREQ_HZ 9u
 #endif
 
+#define SLOT_INTERVAL_SEC	20
+#define INSTALLATION_SEC_LENGTH	20
+#define MAX_SLOT	180
 /* RTC timeout */
 #define APP_RTC_TIMEOUT_MS (1000u / APP_RTC_FREQ_HZ)
 #define APP_RTC_TIMEOUT_1S (1000u)
@@ -144,16 +148,16 @@ static RTCDRV_TimerID_t rtc20SecTimer;
 static volatile uint16_t rtcTickCnt;
 //static volatile uint16_t rtcTickCntEcho;
 
-const uint8_t Version[] = {'H',5,19,1};
+const uint8_t Version[] = {'H',7,19,1};
 
 sensor MySensorsArr[MAX_DATA];
 
 uint8_t fDataIn;
-static uint8_t NewMsgStack[MAX_MSG_IN_STACK][MAX_MSG_LEN+2];
+static uint8_t NewMsgStack[MAX_MSG_IN_STACK][MAX_MSG_LEN];
 static int8_t gReadStack = 0;
 static int8_t gWriteStack = 0;
 
-uint32_t 	g_lMySlots = 0;
+uint32_t 	g_lMySlots = 0;//xAAAAAA;
 WorkingMode g_wCurMode;
 uint16_t	g_iBtr;
 uint32_t	g_LoggerID = 0xFFFFFFFF;
@@ -168,6 +172,8 @@ uint8_t		g_nHour;
 uint8_t		g_nMin;
 uint8_t		g_nSec;
 uint8_t		g_nRetryCnt;
+
+bool fMsg;
 
 Uint32toBytes temp32bituint;
 
@@ -359,7 +365,7 @@ Ecode_t APP_RestoreData(void)
 }
 void PutRadio2Sleep()
 {
-	printMsg("PutRadio2Sleep");
+//	printMsg("PutRadio2Sleep");
 	ezradio_change_state(EZRADIO_CMD_CHANGE_STATE_ARG_NEXT_STATE1_NEW_STATE_ENUM_SLEEP);
 	RTCDRV_Delay(100);
 	GPIO_PinOutClear(GPIO_TCXO_PORT, GPIO_TCXO_PIN);
@@ -403,9 +409,12 @@ void GoToSleep()
 
 bool IsBusySlot(uint8_t slot)
 {
-	uint32_t temp = 2^slot;
-
-	if ((g_lMySlots & temp) == 1)
+	uint32_t temp = 1;
+	uint8_t i;
+	// power of 2 in slot
+	for (i = 0; i < slot; i++)
+		temp *= 2;
+	if ((g_lMySlots & temp) != 0)
 		return true;
 	return false;
 }
@@ -415,6 +424,7 @@ void RemoveSensor(uint8_t i)
 	uint32_t tmp;
 	MySensorsArr[i].ID = DEFAULT_ID;
 	MySensorsArr[i].slot.status = SLOT_STATUS_EMPTY;
+	//todo - check
 	tmp = ~(1 << MySensorsArr[i].slot.index);
 	g_lMySlots &= tmp;
 }
@@ -448,15 +458,9 @@ void RTC_App_IRQHandler()
 void RTC_TimeSlot()
 {
 	g_nCurTimeSlot++;
-	if  ((g_wCurMode == MODE_INSTALLATION) && (rtcTickCnt > 0))
-		return;
 
-	GPIO_PinOutClear(GPIO_LED2_PORT, GPIO_LED2_PIN);
-	GPIO_PinOutSet(GPIO_LED1_PORT, GPIO_LED1_PIN);
-	g_bflagWakeup = true;
-	g_nCurTask = TASK_SLEEP;
 	// end of hour
-	if (g_nCurTimeSlot == 180)
+	if (g_nCurTimeSlot == MAX_SLOT)
 	{
 		g_nCurTimeSlot = 0;
 		g_nHour++;
@@ -467,32 +471,30 @@ void RTC_TimeSlot()
 			CheckSensorConnection();
 		}
 	}
-/*==========================
-	if (g_bStartInstal) //(g_nCurTimeSlot == 5)//
+	if  ((g_wCurMode == MODE_INSTALLATION) && (rtcTickCnt > 0))
+		return;
+
+	GPIO_PinOutClear(GPIO_LED2_PORT, GPIO_LED2_PIN);	// yellow light off
+	GPIO_PinOutSet(GPIO_LED1_PORT, GPIO_LED1_PIN);		//red light on
+	g_bflagWakeup = true;
+	g_nCurTask = TASK_SLEEP;
+	fMsg = false;
+//==========================
+	if (g_bStartInstal)
 	{
 		g_wCurMode = MODE_INSTALLATION;
 		g_nCurTask = TASK_WAIT;
 		g_bStartInstal = false;
-		rtcTickCnt = 6000;// 10 minutes wait
-	}
-	======================*/
-	// if time to listen for irrigation sensor
-	//to-do check if there are irrigation sensors at all
-//	if (((g_nCurTimeSlot % 15) >= 0) && ((g_nCurTimeSlot % 15) <= 2))
-	if ((g_nCurTimeSlot % 2) == 0)
-	{
-		//to-do: light
-		g_wCurMode = MODE_INSTALLATION;//MODE_LISTENING;
-		g_nCurTask = TASK_WAIT;
-		rtcTickCnt = 190;
-//		rtcTickCntEcho = rtcTickCnt;
+		rtcTickCnt = INSTALLATION_SEC_LENGTH * APP_RTC_FREQ_HZ;	// set length of installation time
 		return;
 	}
-	else
+	// if time to listen for irrigation sensor
+	//to-do check if there are irrigation sensors at all
+	if (((g_nCurTimeSlot % 15) >= 0) && ((g_nCurTimeSlot % 15) <= 2))
 	{
-		g_wCurMode = MODE_SENDING;
-	  g_nCurTask = TASK_DO_JOB;
-	  g_nRetryCnt = 0;
+		g_wCurMode = MODE_LISTENING;
+		g_nCurTask = TASK_WAIT;
+		return;
 	}
 
 	// if time to listen to other sensors
@@ -500,7 +502,7 @@ void RTC_TimeSlot()
 	{
 		g_wCurMode = MODE_LISTENING;
 		g_nCurTask = TASK_WAIT;
-		rtcTickCnt = 190;
+		return;
 	}
 	// if time to send data to logger
 	if (g_nCurTimeSlot == g_nHubSlot)
@@ -509,18 +511,6 @@ void RTC_TimeSlot()
 	  g_nCurTask = TASK_DO_JOB;
 	  g_nRetryCnt = 0;
 	}
-
-	// if not going to sleep = restart the 100ms timer
-//	if (g_nCurTask != TASK_SLEEP)
-//	{
-//		if (ECODE_EMDRV_RTCDRV_OK
-//		      != RTCDRV_StartTimer(rtcTickTimer, rtcdrvTimerTypePeriodic, APP_RTC_TIMEOUT_MS,
-//		                           (RTCDRV_Callback_t)RTC_App_IRQHandler, NULL) )
-//		{
-//		    //while (1) ;
-//		  }
-//		//GPIO_PinOutSet(GPIO_LED2_PORT, GPIO_LED2_PIN);
-//	}
 }
 
 uint8_t GetFirstBusyCell()
@@ -596,7 +586,15 @@ void Copy(uint8_t* destBuf, uint8_t* srcBuf, uint8_t len)
 
 uint16_t GetSecToConnect(uint8_t nSlot)
 {
-	return (20 * (180 - g_nCurTimeSlot + nSlot)) - (rtcTickCnt / 10);
+	uint8_t nSlots2Wait;
+
+	logd("rtcTickCnt =  %d", rtcTickCnt);
+	if (g_nCurTimeSlot < nSlot)
+		nSlots2Wait = nSlot - (g_nCurTimeSlot+1);
+	else
+		nSlots2Wait = MAX_SLOT - (g_nCurTimeSlot+1) + nSlot;
+
+	return (SLOT_INTERVAL_SEC * nSlots2Wait) + ((INSTALLATION_SEC_LENGTH - (rtcTickCnt / APP_RTC_FREQ_HZ)) % SLOT_INTERVAL_SEC);
 }
 
 uint8_t InsertNewSensor(uint32_t senID)
@@ -647,6 +645,7 @@ uint8_t GetNextFreeSlot(uint8_t senType)
 	uint8_t index = 0;
 	uint32_t temp = 1;
 	uint32_t allowSlot;
+
 	if (senType == TYPE_IRRIGATION)
 		allowSlot = IRG_SLOTS;
 	else
@@ -656,7 +655,9 @@ uint8_t GetNextFreeSlot(uint8_t senType)
 	{
 		if (((g_lMySlots & temp) == 0) && ((temp & allowSlot) != 0))
 		{
-			g_lMySlots = g_lMySlots & temp;
+			g_lMySlots = g_lMySlots | temp;
+			logd("new sensor to slot %d", index);
+//			logd("my slots: %d", g_lMySlots);
 			return index;
 		}
 		index++;
@@ -682,15 +683,17 @@ uint8_t GetSensorIndex(uint32_t senID)
 bool ParseMsg()
 {
 	//uint32_t l;
-	uint8_t i;
+	uint8_t i,  cs;
 	printMsg("ParseMsg");
 //	logd("index read in stack %d", gReadStack);
 	uint8_t senIndex, size = NewMsgStack[gReadStack][FIRST_FIELD];
 	uint8_t nSlot,res = false;
-
-	if (NewMsgStack[gReadStack][size] != GetCheckSum(&NewMsgStack[gReadStack][1],size-1))
+	logd("size of packet: %d", size);
+	cs = GetCheckSum(&NewMsgStack[gReadStack][1],size-1);
+	if (NewMsgStack[gReadStack][size] != cs)
 	{
 		printMsg("wrong CS");
+		logd("size = %d, cs = %d, NewMsgStack[gReadStack][size] = %d", size, cs, NewMsgStack[gReadStack][size]);
 		//
 		return false;
 	}
@@ -730,11 +733,10 @@ bool ParseMsg()
 					break;
 				}
 
-			logd("sensor ID: %d", msg.Header.m_ID);
-
 			senIndex = GetSensorIndex(msg.Header.m_ID);
+			logd("sensor ID: %d located at index %d", msg.Header.m_ID, senIndex);
 			// not my sensor
-			if (senIndex == MAX_DATA)
+			if (senIndex >= MAX_DATA)
 			{
 				printMsg("not my sensor");
 				if (g_wCurMode == MODE_INSTALLATION)
@@ -752,8 +754,9 @@ bool ParseMsg()
 			}
 			if (msg.Header.m_Header == HEADER_MSR)
 			{
-				Copy(&MySensorsArr[senIndex].data[0], ((uint8_t *) &msg.DataPayload), 5);
-				MySensorsArr[senIndex].data[5] = NewMsgStack[gReadStack][INDEX_RSSI];
+				Copy(&MySensorsArr[senIndex].data[0], ((uint8_t *) &msg.DataPayload), 4);
+				MySensorsArr[senIndex].data[4] = NewMsgStack[gReadStack][INDEX_RSSI];
+				MySensorsArr[senIndex].data[5] = ((uint8_t *) &msg.DataPayload)[4];
 				MySensorsArr[senIndex].IsData = true;
 				MySensorsArr[senIndex].Status = SEN_STATUS_GOT_DATA;
 //				printMsg("save data");
@@ -770,22 +773,25 @@ bool ParseMsg()
 			}
 			MySensorsArr[senIndex].DailyCnct = true;
 //			MySensorsArr[senIndex].slot.status = SLOT_STATUS_BUSY;
-			uint16_t tmp = msg.DataPayload.m_battery;//Bytes2Int(&NewMsgStack[gReadStack][FIRST_FIELD_LEN+12]);
 			nSlot = 0;
-			if  ((g_wCurMode == MODE_INSTALLATION) || ((tmp & 0x3000) >= 0x3000))	// its 3rd sending and up- replace slot
+			if (msg.Header.m_Header == HEADER_MSR)
 			{
-				logd("sensor type is: %d", msg.DataPayload.m_type);//NewMsgStack[gReadStack][INDEX_SEN_TYPE]);
-				nSlot = GetNextFreeSlot(msg.DataPayload.m_type);
-				// if no space
-				if (nSlot < 30)
+				uint16_t tmp = msg.DataPayload.m_battery;//Bytes2Int(&NewMsgStack[gReadStack][FIRST_FIELD_LEN+12]);
+				if  ((g_wCurMode == MODE_INSTALLATION) || ((tmp & 0x3000) >= 0x3000))	// its 3rd sending and up- replace slot
 				{
-					MySensorsArr[senIndex].slot.index = nSlot;
-					MySensorsArr[senIndex].slot.status = SLOT_STATUS_BUSY;
-					//MySensorsArr[senIndex].slot.status = SLOT_STATUS_STANDBY; ??
-					MySensorsArr[senIndex].DailyCnct = true;
+					logd("sensor type is: %d", msg.DataPayload.m_type);//NewMsgStack[gReadStack][INDEX_SEN_TYPE]);
+					nSlot = GetNextFreeSlot(msg.DataPayload.m_type);
+					// if no space
+					if (nSlot < 30)
+					{
+						MySensorsArr[senIndex].slot.index = nSlot;
+						MySensorsArr[senIndex].slot.status = SLOT_STATUS_BUSY;
+						//MySensorsArr[senIndex].slot.status = SLOT_STATUS_STANDBY; ??
+						MySensorsArr[senIndex].DailyCnct = true;
+					}
+					else
+						break;
 				}
-				else
-					break;
 			}
 			//Build response
 //			logd("response for header: %d",msg.Header.m_Header );
@@ -818,15 +824,13 @@ bool ParseMsg()
 			break;
 		g_nMin = msg.RecAckPayload.m_min;//NewMsgStack[gReadStack][INDEX_MIN];
 		g_nSec = msg.RecAckPayload.m_sec;//NewMsgStack[gReadStack][INDEX_SEC];
-		logd("minute is: %d", g_nMin);
-		logd("Second is: %d", g_nSec);
+		logd("minute: %d Second %d", g_nMin, g_nSec);
 		// if it was broadcast - save the logger id and  HUBSLOT number
 		if (g_LoggerID == DEFAULT_ID)
 		{
-			g_LoggerID = msg.Header.m_ID;//Bytes2Long(&NewMsgStack[gReadStack][INDEX_FROM_ADDRESS]);
-			logd("logger id: %d", g_LoggerID);
-			g_nHubSlot = msg.RecAckPayload.m_slot;//NewMsgStack[gReadStack][INDEX_HUB_SLOT];
-			logd("HUBSLOT: %d", g_nHubSlot);
+			g_LoggerID = msg.Header.m_ID;
+			g_nHubSlot = msg.RecAckPayload.m_slot;
+			logd("logger id: %d,HUBSLOT: %d", g_LoggerID, g_nHubSlot);
 		}
 		// sign all data that was send OK - can be removed
 		senIndex = 0;
@@ -935,7 +939,8 @@ uint8_t BuildDataMsg()
 
 void BuildConfigMsg()
 {
-	printMsg("BuildConfigMsg");
+	logd("BuildConfigMsg");
+
 	radioTxPkt[INDEX_HEADER] = HEADER_GETID;
 	radioTxPkt[FIRST_FIELD] = 9;
 	radioTxPkt[FIRST_FIELD+1] = g_iBtr;
@@ -980,6 +985,24 @@ void BufferEnvelopeTransmit(EZRADIODRV_Handle_t handle)
 	  g_nRetryCnt++;
 }
 
+bool StartTickTimer()
+{
+	bool bTimerRun;
+	if (RTCDRV_IsRunning(rtcTickTimer, &bTimerRun) == ECODE_EMDRV_RTCDRV_OK)
+	{
+		if (!bTimerRun)
+			if (ECODE_EMDRV_RTCDRV_OK
+			  != RTCDRV_StartTimer(rtcTickTimer, rtcdrvTimerTypePeriodic, APP_RTC_TIMEOUT_MS,
+								   (RTCDRV_Callback_t)RTC_App_IRQHandler, NULL) )
+		{
+			printMsg("error start timer");
+			return false;
+		 }
+	}
+	else
+		return false;
+	return true;
+}
 /***************************************************************************//**
  * @brief  Main function of the example.
  ******************************************************************************/
@@ -1083,6 +1106,7 @@ int main(void)
   }
   g_nCurTask = TASK_DO_JOB;
 
+//  logd("MAX_AMIT_MSG_LEN = %d, INDEX_RSSI = %d, INDEX_STATUS = %d ",MAX_AMIT_MSG_LEN, INDEX_RSSI, INDEX_STATUS);
   fDataIn = 0;
   /* Enter infinite loop that will take care of ezradio plugin manager and packet transmission. */
   while (1)
@@ -1090,7 +1114,7 @@ int main(void)
 	  /////////////for card 102
 	  if (g_iBtnPressed > 0)
 		{
-			printMsg("btn PRESSED");
+		//	printMsg("btn PRESSED");
 			//bool bIsTimer;
 			while (GPIO_PinInGet(GPIO_BTN_PORT, GPIO_BTN_PIN) == 0);
 			printMsg("btn up");
@@ -1106,24 +1130,25 @@ int main(void)
 			{
 			}
 			else
-				//if (n >= 2)
-				if (g_iBtnPressed > 25)
-				{
-					printMsg("btn prsd 1. listen");
-					g_nCurTask = TASK_WAIT;
-					g_wCurMode = MODE_LISTENING;
-					rtcTickCnt = 6000;//10minute listen
-				}
-				else
-					if (g_iBtnPressed < 25)
-					{
-						printMsg("btn prsd 2");
-						g_nCurTask = TASK_DO_JOB;
-						g_wCurMode = MODE_SENDING;// MODE_INSTALLATION;
+				g_bStartInstal = true;
+			//	if (g_iBtnPressed > 25)
+//				{
+//					printMsg("btn prsd 1. listen");
+//					g_nCurTask = TASK_WAIT;
+//					g_wCurMode = MODE_INSTALLATION;//MODE_LISTENING;
+//					if (StartTickTimer())
+//						rtcTickCnt = 199;//10minute listen
+//				}
+//				else
+//					if (g_iBtnPressed < 25)
+//					{
+//						printMsg("btn prsd 2");
+//						g_nCurTask = TASK_DO_JOB;
+//						g_wCurMode = MODE_SENDING;// MODE_INSTALLATION;
 
 //					if (!g_SensorAlive)
 							//exit(0);
-					}
+//					}
 			EnableBtnInt();
 		}
 
@@ -1132,19 +1157,19 @@ int main(void)
     switch (g_nCurTask)
     {
     case  TASK_SYNC:
-    	if ((g_nSec % 20) == 0)
+    	if ((g_nSec % SLOT_INTERVAL_SEC) == 0)
     	{
-    		g_nCurTimeSlot = (g_nMin * 60 + g_nSec) / 20;
+    		g_nCurTimeSlot = 179;//(g_nMin * 60 + g_nSec) / SLOT_INTERVAL_SEC;
     		logd("synchronize! slot is: %d", g_nCurTimeSlot);
     		// start 20 sec timer
     		if (ECODE_EMDRV_RTCDRV_OK
-    		      != RTCDRV_StartTimer(rtc20SecTimer, rtcdrvTimerTypePeriodic, APP_RTC_TIMEOUT_1S * 20,
+    		      != RTCDRV_StartTimer(rtc20SecTimer, rtcdrvTimerTypePeriodic, APP_RTC_TIMEOUT_1S * SLOT_INTERVAL_SEC,
     		                           (RTCDRV_Callback_t)RTC_TimeSlot, NULL) )
     		  {
-    		    printMsg("failed to set 20 sec timer");
+    		    //logd("failed to set 20 sec timer");
     		  }
     		//GPIO_PinOutClear(GPIO_LED2_PORT, GPIO_LED2_PIN);
-printMsg("before sleep");
+//printMsg("before sleep");
     		g_nCurTask = TASK_SLEEP;
     		//GoToSleep();
     	}
@@ -1153,6 +1178,11 @@ printMsg("before sleep");
     			rtcTickCnt = 10;
     	break;
     case TASK_WAIT:
+    	if ((!fMsg) && (g_wCurMode == MODE_LISTENING))
+    	{
+    		logd("listening");
+    		fMsg = true;
+    	}
 		if (fDataIn)
 		{
 			fDataIn = false;
@@ -1182,22 +1212,21 @@ printMsg("before sleep");
 			while (gReadStack != MAX_MSG_IN_STACK);
 		}
 		else
-			if (rtcTickCnt == 0)
-			{
-				printMsg("timeout");
-				if (g_wCurMode == MODE_CONFIGURE)
-					exit(0);
-				if  ((g_wCurMode == MODE_SENDING) && (g_nRetryCnt < MAX_SEND_RETRY))
-					g_nCurTask = TASK_DO_JOB;
-				else
+			if (g_wCurMode != MODE_LISTENING)
+				if (rtcTickCnt == 0)
 				{
-				// to-do - if send data and hasnt got answer - make it history
-				// to-do - if no answer during configuration mode - exit
-					g_nCurTask = TASK_SLEEP;
-				//GoToSleep();
-				}
-			}
+					printMsg("timeout");
+					// to-do - if send data and hasnt got answer - make it history
+					// to-do - if no answer during configuration mode - exit
 
+					if (g_wCurMode == MODE_CONFIGURE)
+						exit(0);
+
+					if ((g_wCurMode == MODE_SENDING) && (g_nRetryCnt < MAX_SEND_RETRY))
+							g_nCurTask = TASK_DO_JOB;
+						else
+							g_nCurTask = TASK_SLEEP;
+				}
     break;
     case TASK_DO_JOB:
     {
@@ -1221,18 +1250,18 @@ printMsg("before sleep");
      	{
      		bool bTimerRun;
      		WakeupRadio();
+//     		uint8_t i;
+//     		uint32_t tmp1, temp = 1;//(int)pow(2, g_nCurTimeSlot);
+//     		for (i = 0; i < g_nCurTimeSlot; i++)
+//     			temp *= 2;
+//     		tmp1 = g_lMySlots & temp;
+//     		logd("current slot: %d, temp = %d, g_lMySlots = %d, (g_lMySlots & temp) = %d", g_nCurTimeSlot, temp, g_lMySlots, tmp1);
+
     		if (g_nCurTask != TASK_SLEEP)
     		{
     			logd("next task is: %d", g_nCurTask);
 
-      			if (RTCDRV_IsRunning(rtcTickTimer, &bTimerRun) == ECODE_EMDRV_RTCDRV_OK)
-     				if (!bTimerRun)
-     					if (ECODE_EMDRV_RTCDRV_OK
-     				      != RTCDRV_StartTimer(rtcTickTimer, rtcdrvTimerTypePeriodic, APP_RTC_TIMEOUT_MS,
-     				                           (RTCDRV_Callback_t)RTC_App_IRQHandler, NULL) )
-     				{
-     				    printMsg("error start timer");
-     				  }
+    			StartTickTimer();
     		}
      	}
      	break;
@@ -1272,9 +1301,10 @@ static void appPacketReceivedCallback(EZRADIODRV_Handle_t handle, Ecode_t status
 {
   //Silent warning.
   (void)handle;
+  uint8_t g_nRssi;
 
   printMsg("Packet Rec:");
-  printMsg2(radioRxPkt,radioRxPkt[0]);
+  printMsg2(radioRxPkt,radioRxPkt[0]+1);
   printMsg("\r\n");
 
   if ( status == ECODE_EMDRV_EZRADIODRV_OK )
@@ -1282,7 +1312,7 @@ static void appPacketReceivedCallback(EZRADIODRV_Handle_t handle, Ecode_t status
 	  ezradio_cmd_reply_t ezradioReply;
 	  	  //ezradio_part_info(&ezradioReply);
 	  	  ezradio_get_modem_status(0 ,&ezradioReply);
-	  	  uint8_t g_nRssi = ezradioReply.GET_MODEM_STATUS.LATCH_RSSI;
+	  	  g_nRssi = ezradioReply.GET_MODEM_STATUS.LATCH_RSSI;
 	  	  gWriteStack = GetFirstEmptyCell();
 	  	  if (gWriteStack == MAX_MSG_IN_STACK)
 	  	  {
@@ -1290,7 +1320,7 @@ static void appPacketReceivedCallback(EZRADIODRV_Handle_t handle, Ecode_t status
 	  		  return;
 	  	  }
 
-	  	  for (int8_t i = 0; i < MAX_MSG_LEN; i++)
+	  	  for (int8_t i = 0; i <= /*MAX_MSG_LEN*/radioRxPkt[0]+1; i++)
 	  		  NewMsgStack[gWriteStack][i] = radioRxPkt[i];
 	  	  NewMsgStack[gWriteStack][INDEX_RSSI] = g_nRssi;
 	  	  NewMsgStack[gWriteStack][INDEX_STATUS] = CELL_BUSY;
