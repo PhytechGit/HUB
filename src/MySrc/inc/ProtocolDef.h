@@ -23,7 +23,7 @@ typedef struct _PayloadSenData
 //0xBC
 typedef struct _PayloadSenHistory
 {
-	uint16_t		m_history[5];
+	int16_t		m_history[5];
 } PayloadSenHistory;
 
 //0xBB / 0xBD

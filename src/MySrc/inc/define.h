@@ -97,8 +97,8 @@ typedef struct _sensor
 	uint32_t ID;
 	Slot	slot;
 	uint8_t data[6];
-	uint8_t HstrData[10];
-	bool	IsData;
+	int16_t HstrData[5];
+//	bool	IsData;
 	bool 	IsHstr;
 	bool	DailyCnct;
 	SensorStatus Status;

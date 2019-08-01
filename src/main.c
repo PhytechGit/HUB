@@ -92,6 +92,8 @@ static void appPacketCrcErrorCallback (EZRADIODRV_Handle_t handle, Ecode_t statu
 
 #define MAX_DATA	30//EZRADIO_FIFO_SIZE//24
 
+#define SENSOR_NULL_VALUE	-9999
+
 
 /* Tx packet data array, initialized with the default payload in the generated header file */
 static uint8_t radioTxPkt[EZRADIO_FIFO_SIZE] = RADIO_CONFIG_DATA_CUSTOM_PAYLOAD;
@@ -122,7 +124,7 @@ static uint8_t radioRxPkt[EZRADIO_FIFO_SIZE];
 #endif
 
 #define SLOT_INTERVAL_SEC	20
-#define INSTALLATION_SEC_LENGTH	20
+#define INSTALLATION_CYCLES	2
 #define MAX_SLOT	180
 /* RTC timeout */
 #define APP_RTC_TIMEOUT_MS (1000u / APP_RTC_FREQ_HZ)
@@ -136,6 +138,7 @@ typedef enum
 } NVM_Object_Ids;
 
 Sen_Hub_Rec_Msg msg;
+Hub_Monitor_Msg mntr;
 
 /* RTC set time is expired */
 //static volatile bool rtcTick = false;
@@ -363,6 +366,24 @@ Ecode_t APP_RestoreData(void)
   }
   return result;
 }
+
+int16_t Bytes2Int(uint8_t* buf)
+{
+	Int16toBytes tmp;
+
+	for (uint8_t i = 0; i < 2; i++)
+		tmp.bVal[i] =  buf[i];
+
+	return tmp.iVal;
+}
+
+void Copy(uint8_t* destBuf, uint8_t* srcBuf, uint8_t len)
+{
+	uint8_t i;
+	for (i = 0; i < len; i++)
+		destBuf[i] = srcBuf[i];
+}
+
 void PutRadio2Sleep()
 {
 //	printMsg("PutRadio2Sleep");
@@ -392,7 +413,7 @@ void GoToSleep()
 //		return;
 	//printMsg("timer run");
 
-	logd("slot is: %d", g_nCurTimeSlot);
+	logd("slot is: %d ", g_nCurTimeSlot);
 	if (RTCDRV_IsRunning(rtcTickTimer, &bTimerRun) == ECODE_EMDRV_RTCDRV_OK)
 		if (bTimerRun)
 			RTCDRV_StopTimer(rtcTickTimer);
@@ -441,6 +462,55 @@ void CheckSensorConnection()
 		MySensorsArr[i].DailyCnct = false;
 	}
 }
+
+uint8_t GetNextSensor(uint32_t senIndex)
+{
+	uint8_t i = senIndex;
+
+	do
+	{
+		if (MySensorsArr[i].ID != 0)
+			return i;
+		else
+			i++;
+	}
+	while (i < MAX_DATA);
+
+	return MAX_DATA;
+}
+
+void MoveData2Hstr()
+{
+//	logd("MoveData2Hstr");
+	uint8_t senIndex = 0, i;
+	do
+	{
+		senIndex = GetNextSensor(senIndex);
+		if (senIndex != MAX_DATA)
+			// if prev data hasnt sent to logger
+//			logd("sensor %d data status is: %s(%d)", MySensorsArr[senIndex].ID, MySensorsArr[senIndex].Status, MySensorsArr[senIndex].Status);
+			if (MySensorsArr[senIndex].Status != SEN_STATUS_CELL_EMPTY)
+			{
+				//logd("move data");
+				// move all history data 1 step ahead
+				for (i = 4; i > 0; i--)
+				{
+					MySensorsArr[senIndex].HstrData[i] = MySensorsArr[senIndex].HstrData[(i-1)];
+//					MySensorsArr[senIndex].HstrData[i*2] = MySensorsArr[senIndex].HstrData[(i-1)*2];
+//					MySensorsArr[senIndex].HstrData[i*2+1] = MySensorsArr[senIndex].HstrData[(i-1)*2+1];
+				}
+//				logd("copy data %d to history", Bytes2Int(&MySensorsArr[senIndex].data[0]));
+				// copy current data to history data
+//				MySensorsArr[senIndex].HstrData[0] = MySensorsArr[senIndex].data[0];
+//				MySensorsArr[senIndex].HstrData[1] = MySensorsArr[senIndex].data[1];
+				MySensorsArr[senIndex].HstrData[0] = Bytes2Int(&MySensorsArr[senIndex].data[0]);
+				MySensorsArr[senIndex].IsHstr = true;
+			}
+		senIndex++;
+	}
+	while (senIndex < MAX_DATA);
+}
+
 /***************************************************************************//**
  * @brief GPIO Interrupt handler (PB0)
  *        Increments the time by one minute.
@@ -462,6 +532,7 @@ void RTC_TimeSlot()
 	// end of hour
 	if (g_nCurTimeSlot == MAX_SLOT)
 	{
+		MoveData2Hstr();
 		g_nCurTimeSlot = 0;
 		g_nHour++;
 		//midnight
@@ -485,7 +556,7 @@ void RTC_TimeSlot()
 		g_wCurMode = MODE_INSTALLATION;
 		g_nCurTask = TASK_WAIT;
 		g_bStartInstal = false;
-		rtcTickCnt = INSTALLATION_SEC_LENGTH * APP_RTC_FREQ_HZ;	// set length of installation time
+		rtcTickCnt = SLOT_INTERVAL_SEC * INSTALLATION_CYCLES * APP_RTC_FREQ_HZ;	// set length of installation time: Must be duplicates of 20 - like slot length.
 		return;
 	}
 	// if time to listen for irrigation sensor
@@ -498,7 +569,7 @@ void RTC_TimeSlot()
 	}
 
 	// if time to listen to other sensors
-	if ((g_nCurTimeSlot < 30) && (IsBusySlot(g_nCurTimeSlot)))
+	if ((g_nCurTimeSlot < MAX_DATA) && (IsBusySlot(g_nCurTimeSlot)))
 	{
 		g_wCurMode = MODE_LISTENING;
 		g_nCurTask = TASK_WAIT;
@@ -567,22 +638,6 @@ uint16_t Bytes2UInt(uint8_t* buf)
 	return tmp.iVal;
 }
 */
-int16_t Bytes2Int(uint8_t* buf)
-{
-	Int16toBytes tmp;
-
-	for (uint8_t i = 0; i < 2; i++)
-		tmp.bVal[i] =  buf[i];
-
-	return tmp.iVal;
-}
-
-void Copy(uint8_t* destBuf, uint8_t* srcBuf, uint8_t len)
-{
-	uint8_t i;
-	for (i = 0; i < len; i++)
-		destBuf[i] = srcBuf[i];
-}
 
 uint16_t GetSecToConnect(uint8_t nSlot)
 {
@@ -594,12 +649,12 @@ uint16_t GetSecToConnect(uint8_t nSlot)
 	else
 		nSlots2Wait = MAX_SLOT - (g_nCurTimeSlot+1) + nSlot;
 
-	return (SLOT_INTERVAL_SEC * nSlots2Wait) + ((INSTALLATION_SEC_LENGTH - (rtcTickCnt / APP_RTC_FREQ_HZ)) % SLOT_INTERVAL_SEC);
+	return (SLOT_INTERVAL_SEC * nSlots2Wait) + ((rtcTickCnt / APP_RTC_FREQ_HZ) % SLOT_INTERVAL_SEC) ;	// delete(add 1 second - 2 b on the safe side)
 }
 
 uint8_t InsertNewSensor(uint32_t senID)
 {
-	uint8_t i = 0;
+	uint8_t j, i = 0;
 	bool bFoundEmpty = false;
 
 	do
@@ -619,24 +674,11 @@ uint8_t InsertNewSensor(uint32_t senID)
 		MySensorsArr[i].ID = senID;
 		logd("insert sensor: %d to index: %d", senID, i);
 		MySensorsArr[i].Status = SEN_STATUS_CELL_EMPTY;
+		MySensorsArr[i].slot.status = SLOT_STATUS_EMPTY;
+		for (j = 0; j < 5; j++)
+			MySensorsArr[i].HstrData[j] = -9999;
 		return i;
 	}
-	return MAX_DATA;
-}
-
-uint8_t GetNextSensor(uint32_t senIndex)
-{
-	uint8_t i = senIndex;
-
-	do
-	{
-		if (MySensorsArr[i].ID != 0)
-			return i;
-		else
-			i++;
-	}
-	while (i < MAX_DATA);
-
 	return MAX_DATA;
 }
 
@@ -663,8 +705,8 @@ uint8_t GetNextFreeSlot(uint8_t senType)
 		index++;
 		temp = temp << 1;
 	}
-	while  (index < 30);
-	return 30;
+	while  (index < MAX_DATA);
+	return MAX_DATA;
 }
 
 uint8_t GetSensorIndex(uint32_t senID)
@@ -699,22 +741,26 @@ bool ParseMsg()
 	}
 	//copy to struct
 	for ( i = 0; i < size; i++)
-		((( uint8_t *) &msg)[i]) = NewMsgStack[gReadStack][i+1];
+		if (g_wCurMode == MODE_CONFIGURE)
+			((( uint8_t *) &mntr)[i]) = NewMsgStack[gReadStack][i+1];
+		else
+			((( uint8_t *) &msg)[i]) = NewMsgStack[gReadStack][i+1];
 
 	switch (g_wCurMode)
 	{
 	case MODE_CONFIGURE:
 	{
-		// to do: put back
-//		if (NewMsgStack[gReadStack][INDEX_HEADER] != HEADER_GETID_ACK)
-//			break;
-//		if (Bytes2Int(&NewMsgStack[gReadStack][2]) != g_iBtr)
-//			break;
-		myGnrlInfo.m_ID = msg.Header.m_addressee;//Bytes2Long(&NewMsgStack[gReadStack][4]);
-		APP_StoreData(PAGE_ID_TYPE);
-		radioTxPkt[INDEX_HEADER] = HEADER_ID_OK;
-		radioTxPkt[FIRST_FIELD] = 7;
-		radioTxPkt[2] = myGnrlInfo.m_ID;
+		if (mntr.Header.m_Header != HEADER_GETID_ACK)
+			break;
+		if (mntr.stage1AckPayload.m_batteryEcho != g_iBtr)
+			break;
+		myGnrlInfo.m_ID = mntr.stage1AckPayload.m_ID;
+		if (APP_StoreData(PAGE_ID_TYPE) != ECODE_EMDRV_NVM_OK)
+			break;
+
+		mntr.Header.m_Header = HEADER_ID_OK;
+		mntr.Header.m_size = 7;
+		mntr.stage2Payload.m_ID = myGnrlInfo.m_ID;
 		res = true;
 		break;
 	}
@@ -739,12 +785,15 @@ bool ParseMsg()
 			if (senIndex >= MAX_DATA)
 			{
 				printMsg("not my sensor");
-				if (g_wCurMode == MODE_INSTALLATION)
+				//TODO - define RSSI limit for answer
+				if ((g_wCurMode == MODE_INSTALLATION) /*&& NewMsgStack[gReadStack][INDEX_RSSI] > XXX)*/)
 				{
 					senIndex = InsertNewSensor(msg.Header.m_ID);
+					//logd("senIndex = %d, slot status %d" , senIndex, MySensorsArr[senIndex].slot.status);
+
 					if (senIndex == MAX_DATA)
 					{
-						printMsg("not enough soace for more sensor");
+						printMsg("not enough space for more sensor");
 					// cant insert this sensor
 						break;
 					}
@@ -757,18 +806,16 @@ bool ParseMsg()
 				Copy(&MySensorsArr[senIndex].data[0], ((uint8_t *) &msg.DataPayload), 4);
 				MySensorsArr[senIndex].data[4] = NewMsgStack[gReadStack][INDEX_RSSI];
 				MySensorsArr[senIndex].data[5] = ((uint8_t *) &msg.DataPayload)[4];
-				MySensorsArr[senIndex].IsData = true;
+//				MySensorsArr[senIndex].IsData = true;
 				MySensorsArr[senIndex].Status = SEN_STATUS_GOT_DATA;
-//				printMsg("save data");
-//				logd("data arrived: %d, btr: %d, type: %d index: %d", msg.DataPayload.m_data, msg.DataPayload.m_battery, msg.DataPayload.m_type, msg.DataPayload.m_index);
-				logd("data   saved: %d, btr: %d, type: %d rssi: %d", Bytes2Int(&MySensorsArr[senIndex].data[0])
+				logd("data   saved: %d, btr: %d, rssi: %d type: %d", Bytes2Int(&MySensorsArr[senIndex].data[0])
 						, Bytes2Int(&MySensorsArr[senIndex].data[2]), MySensorsArr[senIndex].data[4], MySensorsArr[senIndex].data[5]);
-//				logd("sensor %d data: %s", msg.Header.m_ID, &MySensorsArr[senIndex].data[0]));
-//				printMsg1(MySensorsArr[senIndex].data, 6);
 			}
 			if (NewMsgStack[gReadStack][INDEX_HEADER] == HEADER_HST)
 			{
-				Copy(&MySensorsArr[senIndex].HstrData[0], ((uint8_t *) &msg.HstrPayload), 10);//&NewMsgStack[gReadStack][INDEX_DATA], 10);
+				for (i = 0; i < 5; i++)
+					MySensorsArr[senIndex].HstrData[i] = msg.HstrPayload.m_history[i];
+//				Copy((uint8_t *)&MySensorsArr[senIndex].HstrData[0], ((uint8_t *) &msg.HstrPayload), 10);//&NewMsgStack[gReadStack][INDEX_DATA], 10);
 				MySensorsArr[senIndex].IsHstr = true;
 			}
 			MySensorsArr[senIndex].DailyCnct = true;
@@ -777,12 +824,14 @@ bool ParseMsg()
 			if (msg.Header.m_Header == HEADER_MSR)
 			{
 				uint16_t tmp = msg.DataPayload.m_battery;//Bytes2Int(&NewMsgStack[gReadStack][FIRST_FIELD_LEN+12]);
-				if  ((g_wCurMode == MODE_INSTALLATION) || ((tmp & 0x3000) >= 0x3000))	// its 3rd sending and up- replace slot
+				//logd("cur mode = %d, slot status %d" , g_wCurMode, MySensorsArr[senIndex].slot.status);
+				if  (((g_wCurMode == MODE_INSTALLATION) && (MySensorsArr[senIndex].slot.status == SLOT_STATUS_EMPTY))
+						|| ((tmp & 0x3000) >= 0x3000))	// its 3rd sending and up- replace slot
 				{
 					logd("sensor type is: %d", msg.DataPayload.m_type);//NewMsgStack[gReadStack][INDEX_SEN_TYPE]);
 					nSlot = GetNextFreeSlot(msg.DataPayload.m_type);
 					// if no space
-					if (nSlot < 30)
+					if (nSlot < MAX_DATA)
 					{
 						MySensorsArr[senIndex].slot.index = nSlot;
 						MySensorsArr[senIndex].slot.status = SLOT_STATUS_BUSY;
@@ -842,6 +891,7 @@ bool ParseMsg()
 				if (MySensorsArr[senIndex].Status == SEN_STATUS_SEND_DATA)
 				{
 					MySensorsArr[senIndex].Status = SEN_STATUS_CELL_EMPTY;
+					MySensorsArr[senIndex].IsHstr = false;
 					logd("data of index %d sent OK", senIndex);
 				}
 				senIndex++;
@@ -872,16 +922,20 @@ uint8_t GetSensorData(uint8_t senIndex, uint8_t* tmp)
 	//*tmp[2] = Long2Bytes(MySensorsArr[senIndex].ID);
 	Copy(&tmp[2], Long2Bytes(MySensorsArr[senIndex].ID), 4);
 	Copy(&tmp[6], MySensorsArr[senIndex].data,6);
-	logd("index %d: send data of sensor %d. in buf: %d", senIndex, MySensorsArr[senIndex].ID, Bytes2Long(&tmp[2]));
+	logd("index %d: send data of sensor %d. ", senIndex, MySensorsArr[senIndex].ID);
 		//add history at the end of msg
 	if (MySensorsArr[senIndex].IsHstr)
 	{
 		for (i = 5; i > 0; i--)
 		{
-			if (Bytes2Int(&MySensorsArr[senIndex].HstrData[(i-1)*2]) != -9999)
+			if (MySensorsArr[senIndex].HstrData[i-1] != -9999)
+			{
+				logd("found history at index %d" ,i);
 				break;
+			}
 		}
-		Copy(&tmp[12], MySensorsArr[senIndex].HstrData, i*2);
+
+		Copy(&tmp[12],  (uint8_t*)MySensorsArr[senIndex].HstrData, i*2);
 		tmp[0] += i*2;		// set new size
 	}
 	return tmp[0];
@@ -940,12 +994,15 @@ uint8_t BuildDataMsg()
 void BuildConfigMsg()
 {
 	logd("BuildConfigMsg");
+//	if (stage == 1)
+	{
+		mntr.Header.m_Header = 0xA6;
+		mntr.Header.m_size = 9;
+		mntr.stage1Payload.m_battery = g_iBtr;
+		Copy(mntr.stage1Payload.m_version, (uint8_t*)Version, 4);
+		mntr.stage1Payload.m_rssi = 0;
+	}
 
-	radioTxPkt[INDEX_HEADER] = HEADER_GETID;
-	radioTxPkt[FIRST_FIELD] = 9;
-	radioTxPkt[FIRST_FIELD+1] = g_iBtr;
-	Copy(&radioTxPkt[FIRST_FIELD+3], (uint8_t*)Version[0], 4);
-	//radioTxPkt[INDEX_SIZE+7] = GetCheckSum(radioTxPkt, INDEX_SIZE+7);
 }
 
 void BuildTx()
@@ -1159,7 +1216,7 @@ int main(void)
     case  TASK_SYNC:
     	if ((g_nSec % SLOT_INTERVAL_SEC) == 0)
     	{
-    		g_nCurTimeSlot = 179;//(g_nMin * 60 + g_nSec) / SLOT_INTERVAL_SEC;
+    		g_nCurTimeSlot = (g_nMin * 60 + g_nSec) / SLOT_INTERVAL_SEC;//170;//
     		logd("synchronize! slot is: %d", g_nCurTimeSlot);
     		// start 20 sec timer
     		if (ECODE_EMDRV_RTCDRV_OK
