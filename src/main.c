@@ -503,7 +503,7 @@ void MoveData2Hstr()
 				// copy current data to history data
 //				MySensorsArr[senIndex].HstrData[0] = MySensorsArr[senIndex].data[0];
 //				MySensorsArr[senIndex].HstrData[1] = MySensorsArr[senIndex].data[1];
-				MySensorsArr[senIndex].HstrData[0] = Bytes2Int(&MySensorsArr[senIndex].data[0]);
+				MySensorsArr[senIndex].HstrData[0] = MySensorsArr[senIndex].msr;
 				MySensorsArr[senIndex].IsHstr = true;
 			}
 		senIndex++;
@@ -803,13 +803,17 @@ bool ParseMsg()
 			}
 			if (msg.Header.m_Header == HEADER_MSR)
 			{
-				Copy(&MySensorsArr[senIndex].data[0], ((uint8_t *) &msg.DataPayload), 4);
-				MySensorsArr[senIndex].data[4] = NewMsgStack[gReadStack][INDEX_RSSI];
-				MySensorsArr[senIndex].data[5] = ((uint8_t *) &msg.DataPayload)[4];
+				//Copy(&MySensorsArr[senIndex].data[0], ((uint8_t *) &msg.DataPayload), 4);
+				MySensorsArr[senIndex].msr = msg.DataPayload.m_data;
+				MySensorsArr[senIndex].btr = msg.DataPayload.m_battery;
+				MySensorsArr[senIndex].type = msg.DataPayload.m_type;
+				MySensorsArr[senIndex].rssi = NewMsgStack[gReadStack][INDEX_RSSI];
+//				MySensorsArr[senIndex].data[4] = NewMsgStack[gReadStack][INDEX_RSSI];
+//				MySensorsArr[senIndex].data[5] = ((uint8_t *) &msg.DataPayload)[4];
 //				MySensorsArr[senIndex].IsData = true;
 				MySensorsArr[senIndex].Status = SEN_STATUS_GOT_DATA;
-				logd("data   saved: %d, btr: %d, rssi: %d type: %d", Bytes2Int(&MySensorsArr[senIndex].data[0])
-						, Bytes2Int(&MySensorsArr[senIndex].data[2]), MySensorsArr[senIndex].data[4], MySensorsArr[senIndex].data[5]);
+				logd("data   saved: %d, btr: %d, rssi: %d type: %d", MySensorsArr[senIndex].msr
+						, MySensorsArr[senIndex].btr, MySensorsArr[senIndex].rssi, MySensorsArr[senIndex].rssi);
 			}
 			if (NewMsgStack[gReadStack][INDEX_HEADER] == HEADER_HST)
 			{
@@ -919,9 +923,12 @@ uint8_t GetSensorData(uint8_t senIndex, uint8_t* tmp)
 		return 0;
 	tmp[0] = 12;
 	tmp[1] = TYPE_DATA;
+	for (i = 0; i < 10; i++)
+//		((( uint8_t *) &msg)[i])
+		tmp[i+2] = (((uint8_t*)&(MySensorsArr[senIndex]))[i]);
 	//*tmp[2] = Long2Bytes(MySensorsArr[senIndex].ID);
-	Copy(&tmp[2], Long2Bytes(MySensorsArr[senIndex].ID), 4);
-	Copy(&tmp[6], MySensorsArr[senIndex].data,6);
+//	Copy(&tmp[2], Long2Bytes(MySensorsArr[senIndex].ID), 4);
+//	Copy(&tmp[6], MySensorsArr[senIndex].data,6);
 	logd("index %d: send data of sensor %d. ", senIndex, MySensorsArr[senIndex].ID);
 		//add history at the end of msg
 	if (MySensorsArr[senIndex].IsHstr)

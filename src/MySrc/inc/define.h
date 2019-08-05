@@ -94,12 +94,16 @@ typedef struct _Slot
 
 typedef struct _sensor
 {
-	uint32_t ID;
-	Slot	slot;
-	uint8_t data[6];
+	uint32_t 	ID;
+	int16_t		msr;
+	uint16_t	btr;
+	uint8_t		rssi;
+	uint8_t		type;
+	//uint8_t data[6];
 	int16_t HstrData[5];
 //	bool	IsData;
 	bool 	IsHstr;
+	Slot		slot;
 	bool	DailyCnct;
 	SensorStatus Status;
 } sensor;
