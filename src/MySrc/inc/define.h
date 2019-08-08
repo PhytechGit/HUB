@@ -66,6 +66,7 @@ typedef enum _Task
 	TASK_DO_JOB,
 	TASK_SLEEP,
 	TASK_SYNC,
+	TASK_SEND,
 }Task;
 
 typedef union _Uint16toBytes
@@ -108,8 +109,8 @@ typedef struct _sensor
 	SensorStatus Status;
 } sensor;
 
-#define MAX_TX_LEN	50
-
+//#define MAX_TX_LEN	50
+//#define MAX_DATA	30
 //todo - find the correct io
 #define GPIO_TCXO_PORT			gpioPortC
 #define GPIO_TCXO_PIN			10

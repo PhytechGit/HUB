@@ -2,6 +2,7 @@
 #ifndef PROTOCOL_DEF_H
 #define PROTOCOL_DEF_H
 
+#define MAX_PAYLOAD_LEN	49
 typedef struct _ProtocolHeader
 {
 	uint8_t m_Header;
@@ -38,7 +39,7 @@ typedef struct _PayloadHubData
 {
 	uint16_t	m_battery;
 	uint8_t		m_index;
-	uint8_t		m_data[50];
+	uint8_t		m_data[MAX_PAYLOAD_LEN];
 } PayloadHubData;
 
 

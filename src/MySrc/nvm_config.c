@@ -17,20 +17,19 @@
 #include "em_common.h"
 #include "nvm.h"
 #include "nvm_config.h"
-//#include "MyGlobalVars.h"
+#include "define.h"
    
 /*******************************************************************************
  ***********************   DATA SPECIFICATION START   **************************
  ******************************************************************************/
 
-/* Example object IDs.
- * These IDs should have names that relate to the data objects defined in nvm_config.c. */
-typedef enum
-{
-//  OBJ_GPS_ID,
-//  OBJ_MSR_ID,
-  OBJ_ID_TYPE
-} NVM_Object_Ids;
+///* Example object IDs.
+// * These IDs should have names that relate to the data objects defined in nvm_config.c. */
+//typedef enum
+//{
+//  OBJ_ID_TYPE,
+//  OBJ_DATA
+//} NVM_Object_Ids;
 
 /* Example page IDs.
  * These IDs should have names that relate to the pages defined in nvm_config.c. */
@@ -41,14 +40,23 @@ typedef enum
 //} NVM_Page_Ids;
 
 uint16_t  nvmCounter = 0;
-GeneralInfoObj myGnrlInfo;
+IDStruct myData;
+SensorBasic AllSns[MAX_DATA];
 
 static NVM_Page_t const nvmPageId =
 {
 /*{Pointer to object,   Size of object,   Object ID}, */
-  { (uint8_t *) &myGnrlInfo,  sizeof(myGnrlInfo),   OBJ_ID_TYPE },
+  { (uint8_t *) &myData,  sizeof(myData),   OBJ_ID_TYPE },
   NVM_PAGE_TERMINATION /* Null termination of table. Do not remove! */
 };
+
+static NVM_Page_t const nvmPageData =
+{
+/*{Pointer to object,   Size of object,   Object ID}, */
+  { (uint8_t *) &AllSns,  sizeof(AllSns),   OBJ_DATA },
+  NVM_PAGE_TERMINATION /* Null termination of table. Do not remove! */
+};
+
 
 /* Register all pages into the page table.
  * Assosiate each page to the page ID, and define the type of page. */
@@ -56,8 +64,10 @@ static NVM_Page_Table_t const nvmPages =
 {
 /*{Page ID,      Page pointer,   Page type}, */
 /*  { PAGE_NORMAL_ID, &nvmPageNormal, nvmPageTypeNormal },*/
-  { PAGE_ID_TYPE,   &nvmPageId,   nvmPageTypeWear }
+  { PAGE_ID_TYPE,   &nvmPageId,   nvmPageTypeNormal },
+  { PAGE_DATA,  &nvmPageData, nvmPageTypeNormal}
 };
+
 
 /*******************************************************************************
  ************************   DATA SPECIFICATION END   ***************************

@@ -52,14 +52,17 @@
 #include "ezradio_cmd.h"
 #include "ezradio_api_lib.h"
 #include "ezradio_plugin_manager.h"
-#include "nvm.h"
+//#include "nvm.h"
 #include "define.h"
 #include "ProtocolDef.h"
 #include "ProtocolMonitorDef.h"
+#include "uart_dbg_print.h"
+//#include "nvm_config.h"
+//#include "nvm.h"
 
 /* Push button callback functionns. */
 //static void GPIO_PB1_IRQHandler(uint8_t pin);
-static void GPIO_PB0_IRQHandler(uint8_t pin);
+//static void GPIO_PB0_IRQHandler(uint8_t pin);
 
 #if (defined EZRADIO_VARIABLE_DATA_START)
 #define APP_PKT_DATA_START EZRADIO_VARIABLE_DATA_START
@@ -90,7 +93,7 @@ static void appPacketCrcErrorCallback (EZRADIODRV_Handle_t handle, Ecode_t statu
  * Sends infinite number of packets if defined to 0xFFFF. */
 #define APP_TX_PKT_SEND_NUM   0xFFFF
 
-#define MAX_DATA	30//EZRADIO_FIFO_SIZE//24
+//#define MAX_DATA	30//EZRADIO_FIFO_SIZE//24
 
 #define SENSOR_NULL_VALUE	-9999
 
@@ -130,12 +133,11 @@ static uint8_t radioRxPkt[EZRADIO_FIFO_SIZE];
 #define APP_RTC_TIMEOUT_MS (1000u / APP_RTC_FREQ_HZ)
 #define APP_RTC_TIMEOUT_1S (1000u)
 
-typedef enum
-{
-//  OBJ_GPS_ID,
-//  OBJ_MSR_ID,
-  OBJ_ID_TYPE
-} NVM_Object_Ids;
+//typedef enum
+//{
+//	OBJ_ID_TYPE,
+//	  OBJ_DATA
+//} NVM_Object_Ids;
 
 Sen_Hub_Rec_Msg msg;
 Hub_Monitor_Msg mntr;
@@ -160,22 +162,21 @@ static uint8_t NewMsgStack[MAX_MSG_IN_STACK][MAX_MSG_LEN];
 static int8_t gReadStack = 0;
 static int8_t gWriteStack = 0;
 
-uint32_t 	g_lMySlots = 0;//xAAAAAA;
-WorkingMode g_wCurMode;
-uint16_t	g_iBtr;
-uint32_t	g_LoggerID = 0xFFFFFFFF;
-uint8_t		g_nCurTimeSlot;
-uint8_t		g_nHubSlot;
-bool 		g_bflagWakeup;
-bool 		g_bOnReset;
-Task 		g_nCurTask = TASK_WAIT;
-bool 		g_bIsMoreData;
-bool 		g_bStartInstal;
-uint8_t		g_nHour;
-uint8_t		g_nMin;
-uint8_t		g_nSec;
-uint8_t		g_nRetryCnt;
-
+uint32_t 			g_lMySlots = 0;//xAAAAAA;
+WorkingMode 		g_wCurMode;
+uint16_t			g_iBtr;
+volatile uint32_t	g_LoggerID = 0xFFFFFFFF;
+uint8_t				g_nCurTimeSlot;
+uint8_t				g_nHubSlot;
+bool 				g_bflagWakeup;
+bool 				g_bOnReset;
+Task 				g_nCurTask = TASK_WAIT;
+volatile bool 		g_bIsMoreData;
+bool 				g_bStartInstal;
+uint8_t				g_nHour;
+uint8_t				g_nMin;
+uint8_t				g_nSec;
+uint8_t				g_nRetryCnt;
 bool fMsg;
 
 Uint32toBytes temp32bituint;
@@ -188,7 +189,7 @@ static void GPIO_BTN_IRQHandler( uint8_t pin )
 	if (g_iBtnPressed == 0)
 		g_iBtnPressed = 1;
 //	GPIO_PinOutSet(GPIO_LED1_PORT,GPIO_LED1_PIN);
-	g_bflagWakeup = true;
+//	g_bflagWakeup = true;
 }
 
 void EnableBtnInt()
@@ -245,11 +246,12 @@ static void GpioSetup(void)
  * @brief GPIO Interrupt handler (PB1)
  *        Switches between analog and digital clock modes.
  ******************************************************************************/
+/*
 static void GPIO_PB0_IRQHandler(uint8_t pin)
 {
 	g_bStartInstal = true;
 }
-
+*/
 /***************************************************************************//**
  * @brief GPIO Interrupt handler (PB0)
  *        Increments the time by one minute.
@@ -302,7 +304,7 @@ static void GPIO_PB0_IRQHandler(uint8_t pin)
 Ecode_t APP_StoreData(uint16_t page)
 {
   Ecode_t result;
-
+//  logd("APP_StoreData page = %d", page);
 //  BSP_LedsSet(LED_STORE_ON);
   result = NVM_Write(page, NVM_WRITE_ALL_CMD);
 //  BSP_LedsSet(LED_ALL_OFF);
@@ -319,7 +321,7 @@ Ecode_t APP_StoreData(uint16_t page)
 Ecode_t APP_ReadData(uint16_t page, uint16_t obj)
 {
   Ecode_t result;
-
+  //logd("APP_ReadData page = %d, obj = %d", page, obj);
   result = NVM_Read(page, obj);
 
 //  if (result != ECODE_EMDRV_NVM_OK)
@@ -329,6 +331,7 @@ Ecode_t APP_ReadData(uint16_t page, uint16_t obj)
 /**************************************************************************//**
  * @brief Initialize NVM and restore objects
  *****************************************************************************/
+/*
 Ecode_t APP_RestoreData(void)
 {
   Ecode_t result;
@@ -336,17 +339,27 @@ Ecode_t APP_RestoreData(void)
 //   initialize NVM module
   result = NVM_Init(NVM_ConfigGet());
 
+  if (result != ECODE_EMDRV_NVM_OK)
+	  logd("NVM_Init failed %d  " , result);
+
   if (result == ECODE_EMDRV_NVM_NO_PAGES_AVAILABLE)
-  { // Ups, looks like no valid data in flash!
+  {
+	  // Ups, looks like no valid data in flash!
      //This could happen on first run after flashing.
      //So, we have to erase NVM
     result = NVM_Erase(0);
     // Store initial data/configuration
-    if (result == ECODE_EMDRV_NVM_OK)
-    {
-//      result = APP_StoreData(PAGE_WEAR_ID);
-    	printMsg("NVM_Erase OK");
-    }
+//    if (result == ECODE_EMDRV_NVM_OK)
+//    {
+//    	logd("NVM_Erase OK");
+//      result = APP_StoreData(PAGE_ID_TYPE);
+//      if (result != ECODE_EMDRV_NVM_OK)
+//    	  logd("NVM_Store failed %d  " , result);
+//    	result = NVM_Init(NVM_ConfigGet());
+//
+//    	  if (result != ECODE_EMDRV_NVM_OK)
+//    		  logd("NVM_Init failed %d  " , result);
+//    }
 //     if wear page contains different data/object than normal page
 //     it could be resonable to write wear page here too.
   }
@@ -360,10 +373,34 @@ Ecode_t APP_RestoreData(void)
       result = APP_ReadData(PAGE_ID_TYPE, OBJ_ID_TYPE);
       if (result == ECODE_EMDRV_NVM_OK)
       {
-    		printMsg("NVM_Read ID OK");
+    	logd("NVM_Read ID OK");
       }
 
   }
+  return result;
+}
+*/
+
+/**************************************************************************//**
+ * @brief Initialize NVM and restore objects
+ *****************************************************************************/
+Ecode_t APP_InitNvm(void)
+{
+  Ecode_t result;
+
+//   initialize NVM module
+  result = NVM_Init(NVM_ConfigGet());
+
+  if (result != ECODE_EMDRV_NVM_OK)
+	  //logd("NVM_Init failed %d  " , result);
+
+  if (result == ECODE_EMDRV_NVM_NO_PAGES_AVAILABLE)
+  {
+	  // Ups, looks like no valid data in flash!
+     //This could happen on first run after flashing.
+     //So, we have to erase NVM
+    result = NVM_Erase(0);
+      }
   return result;
 }
 
@@ -443,11 +480,14 @@ bool IsBusySlot(uint8_t slot)
 void RemoveSensor(uint8_t i)
 {
 	uint32_t tmp;
-	MySensorsArr[i].ID = DEFAULT_ID;
+	MySensorsArr[i].ID = 0;//DEFAULT_ID;
 	MySensorsArr[i].slot.status = SLOT_STATUS_EMPTY;
 	//todo - check
 	tmp = ~(1 << MySensorsArr[i].slot.index);
 	g_lMySlots &= tmp;
+	AllSns[i].snsID = 0;
+	AllSns[i].slot = 0;
+	APP_StoreData(PAGE_DATA);
 }
 
 void CheckSensorConnection()
@@ -652,36 +692,6 @@ uint16_t GetSecToConnect(uint8_t nSlot)
 	return (SLOT_INTERVAL_SEC * nSlots2Wait) + ((rtcTickCnt / APP_RTC_FREQ_HZ) % SLOT_INTERVAL_SEC) ;	// delete(add 1 second - 2 b on the safe side)
 }
 
-uint8_t InsertNewSensor(uint32_t senID)
-{
-	uint8_t j, i = 0;
-	bool bFoundEmpty = false;
-
-	do
-	{
-		if (MySensorsArr[i].ID != 0)
-			if (MySensorsArr[i].ID == senID)
-				return i;
-			else
-				i++;
-		else
-			bFoundEmpty = true;
-	}
-	while ((i < MAX_DATA) && (!bFoundEmpty));
-
-	if (bFoundEmpty)
-	{
-		MySensorsArr[i].ID = senID;
-		logd("insert sensor: %d to index: %d", senID, i);
-		MySensorsArr[i].Status = SEN_STATUS_CELL_EMPTY;
-		MySensorsArr[i].slot.status = SLOT_STATUS_EMPTY;
-		for (j = 0; j < 5; j++)
-			MySensorsArr[i].HstrData[j] = -9999;
-		return i;
-	}
-	return MAX_DATA;
-}
-
 uint8_t GetNextFreeSlot(uint8_t senType)
 {
 	uint8_t index = 0;
@@ -698,7 +708,7 @@ uint8_t GetNextFreeSlot(uint8_t senType)
 		if (((g_lMySlots & temp) == 0) && ((temp & allowSlot) != 0))
 		{
 			g_lMySlots = g_lMySlots | temp;
-			logd("new sensor to slot %d", index);
+			logd("next free slot: %d", index);
 //			logd("my slots: %d", g_lMySlots);
 			return index;
 		}
@@ -707,6 +717,71 @@ uint8_t GetNextFreeSlot(uint8_t senType)
 	}
 	while  (index < MAX_DATA);
 	return MAX_DATA;
+}
+
+uint8_t InsertNewSensor(uint32_t senID,uint8_t senType)
+{
+	uint8_t nSlot, j, i = 0;
+	bool bFoundEmpty = false;
+
+	do
+	{
+		if (MySensorsArr[i].ID != 0)
+			if (MySensorsArr[i].ID == senID)
+				return i;
+			else
+				i++;
+		else
+			bFoundEmpty = true;
+	}
+	while ((i < MAX_DATA) && (!bFoundEmpty));
+
+	if (bFoundEmpty)
+	{
+		///////////////////////////////////
+		nSlot = GetNextFreeSlot(senType);
+		// if no space - exit
+		if (nSlot >= MAX_DATA)
+			return MAX_DATA;
+
+		MySensorsArr[i].slot.index = nSlot;
+		MySensorsArr[i].slot.status = SLOT_STATUS_BUSY;
+		//MySensorsArr[senIndex].slot.status = SLOT_STATUS_STANDBY; ??
+		MySensorsArr[i].DailyCnct = true;
+		AllSns[i].slot = nSlot;
+		/////////////////////////////////////
+		MySensorsArr[i].ID = senID;
+		logd("insert sensor: %d to index: %d", senID, i);
+		MySensorsArr[i].Status = SEN_STATUS_CELL_EMPTY;
+//		MySensorsArr[i].slot.status = SLOT_STATUS_EMPTY;
+		for (j = 0; j < 5; j++)
+			MySensorsArr[i].HstrData[j] = -9999;
+		AllSns[i].snsID = senID;
+		APP_StoreData(PAGE_DATA);
+		return i;
+	}
+	return MAX_DATA;
+}
+
+uint8_t SwapSlot(uint8_t index)
+{
+	uint8_t newSlot;
+	// find new slot
+	newSlot = GetNextFreeSlot(MySensorsArr[index].type);
+	if (newSlot >= MAX_DATA)
+		return MAX_DATA;
+	// delete old one
+	logd("remove sensor %d from slot %d and insert it to %d", MySensorsArr[index].ID, MySensorsArr[index].slot.index, newSlot);
+	uint32_t t = ~(1 << MySensorsArr[index].slot.index);
+	g_lMySlots &= t;
+
+	logd("sensor type is: %d", msg.DataPayload.m_type);//NewMsgStack[gReadStack][INDEX_SEN_TYPE]);
+
+	MySensorsArr[index].slot.index = newSlot;
+	MySensorsArr[index].slot.status = SLOT_STATUS_BUSY;
+	AllSns[index].slot = newSlot;
+	APP_StoreData(PAGE_DATA);
+	return newSlot;
 }
 
 uint8_t GetSensorIndex(uint32_t senID)
@@ -724,13 +799,12 @@ uint8_t GetSensorIndex(uint32_t senID)
 
 bool ParseMsg()
 {
-	//uint32_t l;
+	uint8_t bNewSensor = false;
 	uint8_t i,  cs;
-	printMsg("ParseMsg");
-//	logd("index read in stack %d", gReadStack);
 	uint8_t senIndex, size = NewMsgStack[gReadStack][FIRST_FIELD];
-	uint8_t nSlot,res = false;
-	logd("size of packet: %d", size);
+	uint8_t nSlot = MAX_DATA,res = false;
+
+	logd("ParseMsg. size of packet: %d", size);
 	cs = GetCheckSum(&NewMsgStack[gReadStack][1],size-1);
 	if (NewMsgStack[gReadStack][size] != cs)
 	{
@@ -754,13 +828,13 @@ bool ParseMsg()
 			break;
 		if (mntr.stage1AckPayload.m_batteryEcho != g_iBtr)
 			break;
-		myGnrlInfo.m_ID = mntr.stage1AckPayload.m_ID;
+		myData.m_ID = mntr.stage1AckPayload.m_ID;
 		if (APP_StoreData(PAGE_ID_TYPE) != ECODE_EMDRV_NVM_OK)
 			break;
 
 		mntr.Header.m_Header = HEADER_ID_OK;
 		mntr.Header.m_size = 7;
-		mntr.stage2Payload.m_ID = myGnrlInfo.m_ID;
+		mntr.stage2Payload.m_ID = myData.m_ID;
 		res = true;
 		break;
 	}
@@ -771,7 +845,7 @@ bool ParseMsg()
 		// if its data or history msg from sensor
 		if ((msg.Header.m_Header == HEADER_MSR) || (msg.Header.m_Header == HEADER_HST))
 		{
-			if (msg.Header.m_addressee != myGnrlInfo.m_ID)
+			if (msg.Header.m_addressee != myData.m_ID)
 				if (msg.Header.m_addressee != DEFAULT_ID)
 				{
 					printMsg("message not for me");
@@ -788,7 +862,7 @@ bool ParseMsg()
 				//TODO - define RSSI limit for answer
 				if ((g_wCurMode == MODE_INSTALLATION) /*&& NewMsgStack[gReadStack][INDEX_RSSI] > XXX)*/)
 				{
-					senIndex = InsertNewSensor(msg.Header.m_ID);
+					senIndex = InsertNewSensor(msg.Header.m_ID, msg.DataPayload.m_type);
 					//logd("senIndex = %d, slot status %d" , senIndex, MySensorsArr[senIndex].slot.status);
 
 					if (senIndex == MAX_DATA)
@@ -797,6 +871,9 @@ bool ParseMsg()
 					// cant insert this sensor
 						break;
 					}
+					// sign that sensor is new for next
+					bNewSensor = true;
+					nSlot = MySensorsArr[senIndex].slot.index;
 				}
 				else
 					break;
@@ -808,12 +885,9 @@ bool ParseMsg()
 				MySensorsArr[senIndex].btr = msg.DataPayload.m_battery;
 				MySensorsArr[senIndex].type = msg.DataPayload.m_type;
 				MySensorsArr[senIndex].rssi = NewMsgStack[gReadStack][INDEX_RSSI];
-//				MySensorsArr[senIndex].data[4] = NewMsgStack[gReadStack][INDEX_RSSI];
-//				MySensorsArr[senIndex].data[5] = ((uint8_t *) &msg.DataPayload)[4];
-//				MySensorsArr[senIndex].IsData = true;
 				MySensorsArr[senIndex].Status = SEN_STATUS_GOT_DATA;
 				logd("data   saved: %d, btr: %d, rssi: %d type: %d", MySensorsArr[senIndex].msr
-						, MySensorsArr[senIndex].btr, MySensorsArr[senIndex].rssi, MySensorsArr[senIndex].rssi);
+						, MySensorsArr[senIndex].btr, MySensorsArr[senIndex].rssi, MySensorsArr[senIndex].type);
 			}
 			if (NewMsgStack[gReadStack][INDEX_HEADER] == HEADER_HST)
 			{
@@ -824,27 +898,13 @@ bool ParseMsg()
 			}
 			MySensorsArr[senIndex].DailyCnct = true;
 //			MySensorsArr[senIndex].slot.status = SLOT_STATUS_BUSY;
-			nSlot = 0;
 			if (msg.Header.m_Header == HEADER_MSR)
 			{
 				uint16_t tmp = msg.DataPayload.m_battery;//Bytes2Int(&NewMsgStack[gReadStack][FIRST_FIELD_LEN+12]);
-				//logd("cur mode = %d, slot status %d" , g_wCurMode, MySensorsArr[senIndex].slot.status);
-				if  (((g_wCurMode == MODE_INSTALLATION) && (MySensorsArr[senIndex].slot.status == SLOT_STATUS_EMPTY))
-						|| ((tmp & 0x3000) >= 0x3000))	// its 3rd sending and up- replace slot
-				{
-					logd("sensor type is: %d", msg.DataPayload.m_type);//NewMsgStack[gReadStack][INDEX_SEN_TYPE]);
-					nSlot = GetNextFreeSlot(msg.DataPayload.m_type);
-					// if no space
-					if (nSlot < MAX_DATA)
-					{
-						MySensorsArr[senIndex].slot.index = nSlot;
-						MySensorsArr[senIndex].slot.status = SLOT_STATUS_BUSY;
-						//MySensorsArr[senIndex].slot.status = SLOT_STATUS_STANDBY; ??
-						MySensorsArr[senIndex].DailyCnct = true;
-					}
-					else
-						break;
-				}
+				// if its installation mode but the sensor was known already or its normal listening but 3rd time sending
+				if  (((g_wCurMode == MODE_INSTALLATION) && (bNewSensor == false) && (msg.Header.m_addressee == DEFAULT_ID))
+						|| ((g_wCurMode == MODE_LISTENING) && ((tmp & 0x3000) >= 0x3000)))
+					nSlot = SwapSlot(senIndex);
 			}
 			//Build response
 //			logd("response for header: %d",msg.Header.m_Header );
@@ -852,9 +912,10 @@ bool ParseMsg()
 //			logd("new header: %d",msg.Header.m_Header );
 			msg.Header.m_size = sizeof(msg.Header) + sizeof(msg.AckPayload) + 1;
 			msg.Header.m_addressee = msg.Header.m_ID;
-			msg.Header.m_ID = myGnrlInfo.m_ID;
+			msg.Header.m_ID = myData.m_ID;
 			msg.AckPayload.m_indexEcho = msg.DataPayload.m_index;
-			if (nSlot == 0)
+			// if no new slot - send 0
+			if (nSlot == MAX_DATA)
 				msg.AckPayload.m_slot = 0;
 			else
 				msg.AckPayload.m_slot = GetSecToConnect(nSlot);
@@ -869,11 +930,11 @@ bool ParseMsg()
 	}
 	case  MODE_SENDING:
 	{
-		printMsg("Ack for data sending");
+		logd("Ack for data sending. from logger: %d. my logger %d", msg.Header.m_ID, g_LoggerID);
 		//checif its the right message type
 		if (msg.Header.m_Header != HEADER_SND_DATA_ACK)
 			break;
-		if (msg.Header.m_addressee != myGnrlInfo.m_ID)
+		if (msg.Header.m_addressee != myData.m_ID)
 			break;
 		g_nMin = msg.RecAckPayload.m_min;//NewMsgStack[gReadStack][INDEX_MIN];
 		g_nSec = msg.RecAckPayload.m_sec;//NewMsgStack[gReadStack][INDEX_SEC];
@@ -904,9 +965,6 @@ bool ParseMsg()
 		}
 		while (senIndex < MAX_DATA);
 
-		// if more data - do another sending task
-		if (g_bIsMoreData)
-			g_nCurTask = TASK_DO_JOB;
 		res = true;
 		break;
 	}
@@ -951,12 +1009,13 @@ uint8_t GetSensorData(uint8_t senIndex, uint8_t* tmp)
 uint8_t BuildDataMsg()
 {
 	uint8_t bufIndex = 0,/*INDEX_DATA,*/ senIndex = 0, i =0;
-	g_bIsMoreData = false;
-	printMsg("BuildDataMsg");
+//	g_bIsMoreData = false;
+	g_nRetryCnt = 0;
+	logd("BuildDataMsg. g_LoggerID= %d", g_LoggerID);
 
 	msg.Header.m_Header = HEADER_SND_DATA;
 	msg.Header.m_addressee = g_LoggerID;
-	msg.Header.m_ID = myGnrlInfo.m_ID;
+	msg.Header.m_ID = myData.m_ID;
 	msg.HubPayload.m_battery = g_iBtr;
 	msg.HubPayload.m_index = 1;
 
@@ -964,25 +1023,20 @@ uint8_t BuildDataMsg()
 	do
 	{
 		senIndex = GetNextSensor(senIndex);
-		if (senIndex != MAX_DATA)
+		logd("senIndex= %d",senIndex);
+		if (senIndex < MAX_DATA)
 		{
 			i = GetSensorData(senIndex, &msg.HubPayload.m_data[bufIndex]);//&tmp[0]);
-//	while ((bufIndex + i < MAX_TX_LEN) && (senIndex != MAX_DATA))
-//	{
-			if (((i + bufIndex) < MAX_TX_LEN) && (i > 0))
+			if (((i + bufIndex) < MAX_PAYLOAD_LEN) && (i > 0))
 			{
 				bufIndex += i;
-			//x++;
 				MySensorsArr[senIndex].Status = SEN_STATUS_SEND_DATA;
+				logd("add %d bytes to buffer. total len is: %d", i, bufIndex);
 			}
-			logd("add %d bytes to buffer. total len is: %d", i, bufIndex);
 		}
-		//senIndex = GetNextSensor(senIndex);
-		//if (senIndex != MAX_DATA)
-			//i = GetSensorData(senIndex, &msg.HubPayload.m_data[bufIndex]);//&tmp[0]);
 		senIndex++;
 	}
-	while (((bufIndex + 12) < MAX_TX_LEN) && (senIndex < MAX_DATA));
+	while (/*((bufIndex + 12) < MAX_PAYLOAD_LEN) && */(senIndex < MAX_DATA));
 	// if no data at all - write 0 as payload size
 	if ((g_bOnReset) || (i == 0))
 	{
@@ -991,10 +1045,11 @@ uint8_t BuildDataMsg()
 		printMsg("empty");
 	}
 	// if there is more datato send but not enough space - mark flag
-	if ((i > 0) && (senIndex != MAX_DATA))
+	if ((i > 0) && (senIndex < MAX_DATA))
 		g_bIsMoreData = true;
 	// write size
 	msg.Header.m_size = sizeof(msg.Header) + bufIndex + 4; //4=2 bytes for m_battery + 1 byte for m_index + CS
+	printMsg1((uint8_t*)&msg, msg.Header.m_size);
 	return bufIndex;
 }
 
@@ -1009,7 +1064,6 @@ void BuildConfigMsg()
 		Copy(mntr.stage1Payload.m_version, (uint8_t*)Version, 4);
 		mntr.stage1Payload.m_rssi = 0;
 	}
-
 }
 
 void BuildTx()
@@ -1026,7 +1080,7 @@ void BufferEnvelopeTransmit(EZRADIODRV_Handle_t handle)
 	uint8_t i;
 	uint8_t bufLen;
 
-	printMsg("BufferEnvelopeTransmit");
+	logd("BufferEnvelopeTransmit. g_LoggerID = %d", g_LoggerID);
 	bufLen = msg.Header.m_size;//radioTxPkt[INDEX_SIZE];
 	for ( i = 0; i < bufLen-1; i++)
 		radioTxPkt[FIRST_FIELD_LEN+i] = (((const uint8_t *) &msg) [i]);
@@ -1067,6 +1121,39 @@ bool StartTickTimer()
 		return false;
 	return true;
 }
+
+void InitSensorArray()
+{
+	uint8_t i;
+	Ecode_t res =  APP_ReadData(PAGE_DATA, OBJ_DATA);
+	// if cant load from nvm - init all
+	if (res != ECODE_EMDRV_NVM_OK)
+	{
+		for (i = 0; i < MAX_DATA; i++)
+		{
+			AllSns[i].snsID = 0;		//init id
+			AllSns[i].slot = 0;		// init slot
+		}
+		APP_StoreData(PAGE_DATA);
+	}
+	for (i = 0; i < MAX_DATA; i++)
+	{
+		MySensorsArr[i].ID = AllSns[i].snsID;
+		MySensorsArr[i].slot.index = AllSns[i].slot;
+		MySensorsArr[i].slot.status = SLOT_STATUS_BUSY;
+		MySensorsArr[i].IsHstr = false;
+		MySensorsArr[i].Status = SEN_STATUS_CELL_EMPTY;
+		MySensorsArr[i].DailyCnct = false;
+		logd("sensor %d at index %d slot %d" ,MySensorsArr[i].ID, i, MySensorsArr[i].slot.index);
+		if (AllSns[i].slot != 0)
+		{
+			uint32_t n = 1 << AllSns[i].slot;
+			g_lMySlots |= n;
+		}
+	}
+	logd("g_lMySlots = %d", g_lMySlots);
+}
+
 /***************************************************************************//**
  * @brief  Main function of the example.
  ******************************************************************************/
@@ -1077,7 +1164,7 @@ int main(void)
   EZRADIODRV_Handle_t appRadioHandle = &appRadioInitData;
 
   /* EZRadio response structure union */
-  ezradio_cmd_reply_t ezradioReply;
+//  ezradio_cmd_reply_t ezradioReply;
 
   /* Chip errata */
   CHIP_Init();
@@ -1149,19 +1236,29 @@ int main(void)
   ezradioStartRx(appRadioHandle);
 #endif
 
-
+  Ecode_t res = APP_InitNvm();
 #ifdef DEBUG_MODE
-  myGnrlInfo.m_ID = 590000;
-	  logd("Hi! ID is: %d", myGnrlInfo.m_ID);
-//  	  APP_StoreData(PAGE_ID_TYPE);
+  myData.m_ID = 590000;	//710136;	//
+  res =  APP_StoreData(PAGE_ID_TYPE);
+  	  if (res != ECODE_EMDRV_NVM_OK)
+  		  logd("failed saving info %d", res);
+  	myData.m_ID = 0;
 #endif
-  //APP_RestoreData();
-  if (myGnrlInfo.m_ID == 0)
+  	 res = APP_ReadData(PAGE_ID_TYPE, OBJ_ID_TYPE);
+	  if (res == ECODE_EMDRV_NVM_OK)
+	  {
+		logd("NVM_Read ID OK");
+	  }
+//  if (res != ECODE_EMDRV_NVM_OK)
+//	  logd("failed restoring data %d", res);
+  logd("Hi! ID is: %d", myData.m_ID);
+  if (myData.m_ID == 0)
   {
 	  g_wCurMode = MODE_CONFIGURE;
   }
   else
   {
+	  InitSensorArray();
 	  g_wCurMode = MODE_SENDING;
 	  g_bOnReset = true;
 	  ///for card 102
@@ -1190,8 +1287,12 @@ int main(void)
 			// if less than 1.5 sec - do nothing
 			//if more than 10 sec - delete configuration of sensor (ID+type) and exit (factory reset)
 			//if (n >= 10)
-			if (g_iBtnPressed > (APP_RTC_FREQ_HZ * 10))
+			//if (n >= 40) - restart running
+			if (g_iBtnPressed > (APP_RTC_FREQ_HZ * 4))
 			{
+				g_wCurMode = MODE_SENDING;
+				//g_bOnReset = true;
+				  g_nCurTask = TASK_DO_JOB;
 			}
 			else
 				g_bStartInstal = true;
@@ -1269,6 +1370,10 @@ int main(void)
 							printMsg("start sync");
 							break;
 						}
+						else
+							// if more data - do another sending task
+							if (g_bIsMoreData)
+								g_nCurTask = TASK_DO_JOB;
 					}
 				NewMsgStack[gReadStack][INDEX_STATUS] = CELL_EMPTY;
 				gReadStack = GetFirstBusyCell();
@@ -1287,9 +1392,12 @@ int main(void)
 						exit(0);
 
 					if ((g_wCurMode == MODE_SENDING) && (g_nRetryCnt < MAX_SEND_RETRY))
-							g_nCurTask = TASK_DO_JOB;
+							g_nCurTask = TASK_SEND;
 						else
-							g_nCurTask = TASK_SLEEP;
+							if (g_bOnReset)
+								exit(0);
+							else
+								g_nCurTask = TASK_SLEEP;
 				}
     break;
     case TASK_DO_JOB:
@@ -1297,22 +1405,25 @@ int main(void)
     	printMsg("do job. ");//cur mode is:");
     	//PrintIntNum((int32_t)g_wCurMode);
     	BuildTx();
-    	// todo - insert size to TX
-    	//ezradioStartTransmitConfigured( appRadioHandle, radioTxPkt );
-    	//logd("len mode is: %d", appRadioHandle->packetTx.lenConfig.lenMode);
-    	//PrintNum(appRadioHandle->packetTx.lenConfig.lenMode);
-    	BufferEnvelopeTransmit(appRadioHandle);
-    	g_nCurTask = TASK_WAIT;
-    	printMsg("wait");
-    	rtcTickCnt = 30;
+		 GPIO_PinOutSet(GPIO_LED1_PORT,GPIO_LED1_PIN);
+    	g_nCurTask = TASK_SEND;
+
     }
     break;
+    case TASK_SEND:
+    	BufferEnvelopeTransmit(appRadioHandle);
+		g_nCurTask = TASK_WAIT;
+		printMsg("wait");
+		rtcTickCnt = 30;
+		if (g_bOnReset)
+			rtcTickCnt = 50;
+    	break;
     case TASK_SLEEP:
     	printMsg("sleep");
      	GoToSleep();
      	if (g_bflagWakeup == true)
      	{
-     		bool bTimerRun;
+//     		bool bTimerRun;
      		WakeupRadio();
 //     		uint8_t i;
 //     		uint32_t tmp1, temp = 1;//(int)pow(2, g_nCurTimeSlot);
@@ -1367,9 +1478,9 @@ static void appPacketReceivedCallback(EZRADIODRV_Handle_t handle, Ecode_t status
   (void)handle;
   uint8_t g_nRssi;
 
-  printMsg("Packet Rec:");
-  printMsg2(radioRxPkt,radioRxPkt[0]+1);
-  printMsg("\r\n");
+//  logd("Packet Rec: %s",radioRxPkt);
+//  logd(radioRxPkt,radioRxPkt[0]+1);
+//  printMsg("\r\n");
 
   if ( status == ECODE_EMDRV_EZRADIODRV_OK )
   {
@@ -1452,7 +1563,7 @@ static uint32_t rxNumOfRestByte = 0; // Rx rest bytes
 
 
 // ******************************************************************************
-//* Tx
+//
 // ******************************************************************************
 Ecode_t tjEzrTransmit(EZRADIODRV_Handle_t radioHandle, bool updateFields, EZRADIODRV_PacketLengthConfig_t pktLengthConf, uint8_t *pioRadioPacket)
 {

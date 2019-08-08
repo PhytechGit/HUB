@@ -18,7 +18,7 @@
 #include <stdbool.h>
 #include "ecode.h"
 #include "nvm.h"
-//#include "MyGlobalVars.h"
+#include "define.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -60,7 +60,7 @@ extern "C" {
 #define NVM_FEATURE_WRITE_NECESSARY_CHECK_ENABLED    true
 
 /** define maximum number of flash pages that can be used as NVM */
-#define NVM_MAX_NUMBER_OF_PAGES                      32
+#define NVM_MAX_NUMBER_OF_PAGES                      10//32
   
 /** Configure extra pages to allocate for data security and wear leveling.
     Minimum 1, but the more you add the better lifetime your system will have. */
@@ -69,21 +69,23 @@ extern "C" {
 /** Set the NVM driver page size to the size of the EFM32 flash */
 #define NVM_PAGE_SIZE                                FLASH_PAGE_SIZE
 
-
+#define MAX_DATA	30
 /*******************************************************************************
  ******************************   TYPEDEFS   ***********************************
  ******************************************************************************/
+/* Example object IDs.
+ * These IDs should have names that relate to the data objects defined in nvm_config.c. */
+typedef enum
+{
+  OBJ_ID_TYPE,
+  OBJ_DATA
+} NVM_Object_Ids;
 
 typedef enum
 {
-	PAGE_ID_TYPE
+  PAGE_ID_TYPE,
+  PAGE_DATA,
 } NVM_Page_Ids;
-//#else
-//typedef enum
-//{
-//	PAGE_ID_TYPE
-//} NVM_Page_Ids;
-//#endif
 
 /** Enum describing the type of logical page we have; normal or wear. */
 typedef enum
@@ -123,62 +125,56 @@ typedef struct
   uint8_t          const *nvmArea;   /**< Pointer to nvm area in flash. */
 } NVM_Config_t;
 
-
-typedef enum obj
-{
-  OBJ_SENSOR_DATA_ID = 10,
-  OBJ_SENSOR_MR_ID,
-  OBJ_SENSOR_GPS_ID
-} obj1;//NVM_Object_Ids;
-
-
-//typedef struct
-//{
-//	uint32_t 	m_ID;
-//	uint8_t 	m_type;
-//	uint16_t 	m_data;
-//	uint16_t	m_btr;
-//	uint8_t		m_rssi;
-//	uint8_t		m_msgIndex;
-//} SensorDataObj;
-
-
-//typedef struct
-//{
-//	uint16_t m_nCounter;
-////	uint16_t m_nReadIndex;
-//	uint16_t m_nWriteIndex;
-////	SensorDataObj m_nDataTbl[MAX_DATA_TO_SAVE];
-//} MsrStruct;
-//
-//typedef struct
-//{
-//	uint32_t 	m_ID;
-//	uint8_t		m_Type;
-//	float 		m_Lon;
-//	float 		m_Lat;
-//} SensorMRObj;
-
-//typedef struct
-//{
-//	volatile uint16_t m_nCounter;
-//	volatile uint16_t m_nWriteIndex;
-////	SensorMRObj m_nLocationTbl[MAX_LCTN_TO_SAVE];
-//} LocationStruct;
-
-
-//extern MsrStruct msrData;
-//extern LocationStruct GpsData;
-
 typedef struct
 {
 	uint32_t 	m_ID;
 //	uint32_t	m_gpsID;
 	uint8_t		m_Type;
-} GeneralInfoObj;
+} IDStruct;
 
-extern GeneralInfoObj myGnrlInfo;
+typedef struct
+{
+	uint32_t	snsID;
+	uint8_t		slot;
+}SensorBasic;
+//typedef enum _SensorStatus
+//{
+//	SEN_STATUS_GOT_DATA,
+//	SEN_STATUS_SEND_DATA,
+//	SEN_STATUS_CELL_EMPTY,
+//}SensorStatus;
+//
+//typedef enum _SlotStatus
+//{
+//	SLOT_STATUS_EMPTY,
+//	SLOT_STATUS_STANDBY,
+//	SLOT_STATUS_BUSY,
+//}SlotStatus;
+//
+//typedef struct _Slot
+//{
+//	uint8_t 	index;
+//	SlotStatus	status;
+//}Slot;
 
+//typedef struct _sensor
+//{
+//	uint32_t 	ID;
+//	int16_t		msr;
+//	uint16_t	btr;
+//	uint8_t		rssi;
+//	uint8_t		type;
+//	//uint8_t data[6];
+//	int16_t HstrData[5];
+////	bool	IsData;
+//	bool 	IsHstr;
+//	Slot		slot;
+//	bool	DailyCnct;
+//	SensorStatus Status;
+//} sensor;
+
+extern IDStruct myData;
+extern SensorBasic AllSns[MAX_DATA];
 
 /*******************************************************************************
  *****************************   PROTOTYPES   **********************************

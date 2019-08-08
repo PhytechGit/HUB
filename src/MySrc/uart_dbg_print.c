@@ -102,16 +102,12 @@ void PrintChar(const char* msg)
 #endif
 }
 */
-void printMsg1(uint8_t* msg, int len)
+void printMsg1(uint8_t* str, int len)
 {
-//    char       msg[100];
 #ifdef DEBUG_MODE
-
-    if(!uartInitialized[DBG_VCOM]){// initialized uart0 (work with VCOM) for print debug
-    	uart0Init();
-    }
-    uartSendBuffer(DBG_VCOM, msg, len);
-    uartSendBuffer(DBG_VCOM,"\r\n", 2);
+	uint8_t i;
+	for (i = 0; i < len; i++)
+		logTx(*str++);
 #endif
 }
 
