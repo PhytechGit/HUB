@@ -156,6 +156,7 @@ static volatile uint16_t rtcTickCnt;
 const uint8_t Version[] = {'H',7,19,1};
 
 sensor MySensorsArr[MAX_DATA];
+uint32_t			g_LoggerID;// = 0xFFFFFFFF;
 
 uint8_t fDataIn;
 static uint8_t NewMsgStack[MAX_MSG_IN_STACK][MAX_MSG_LEN];
@@ -165,7 +166,6 @@ static int8_t gWriteStack = 0;
 uint32_t 			g_lMySlots = 0;//xAAAAAA;
 WorkingMode 		g_wCurMode;
 uint16_t			g_iBtr;
-volatile uint32_t	g_LoggerID = 0xFFFFFFFF;
 uint8_t				g_nCurTimeSlot;
 uint8_t				g_nHubSlot;
 bool 				g_bflagWakeup;
@@ -189,7 +189,7 @@ static void GPIO_BTN_IRQHandler( uint8_t pin )
 	if (g_iBtnPressed == 0)
 		g_iBtnPressed = 1;
 //	GPIO_PinOutSet(GPIO_LED1_PORT,GPIO_LED1_PIN);
-//	g_bflagWakeup = true;
+	g_bflagWakeup = true;
 }
 
 void EnableBtnInt()
@@ -450,7 +450,7 @@ void GoToSleep()
 //		return;
 	//printMsg("timer run");
 
-	logd("slot is: %d ", g_nCurTimeSlot);
+//	logd("slot is: %d ", g_nCurTimeSlot);
 	if (RTCDRV_IsRunning(rtcTickTimer, &bTimerRun) == ECODE_EMDRV_RTCDRV_OK)
 		if (bTimerRun)
 			RTCDRV_StopTimer(rtcTickTimer);
@@ -503,10 +503,12 @@ void CheckSensorConnection()
 	}
 }
 
-uint8_t GetNextSensor(uint32_t senIndex)
+uint8_t GetNextSensor(uint8_t i)
 {
-	uint8_t i = senIndex;
+//	uint8_t i = senIndex;
 
+	if (i >= MAX_DATA)
+		return MAX_DATA;
 	do
 	{
 		if (MySensorsArr[i].ID != 0)
@@ -565,10 +567,9 @@ void RTC_App_IRQHandler()
 	  g_nSec++;
 }
 
-void RTC_TimeSlot()
+void HandleTimeSlot()
 {
-	g_nCurTimeSlot++;
-
+//	logd("SLOT: %d. HOUR: %d",g_nCurTimeSlot, g_nHour);
 	// end of hour
 	if (g_nCurTimeSlot == MAX_SLOT)
 	{
@@ -583,20 +584,23 @@ void RTC_TimeSlot()
 		}
 	}
 	if  ((g_wCurMode == MODE_INSTALLATION) && (rtcTickCnt > 0))
+	{
+//		logd("during instal. tick = %d", rtcTickCnt);
 		return;
-
+	}
 	GPIO_PinOutClear(GPIO_LED2_PORT, GPIO_LED2_PIN);	// yellow light off
 	GPIO_PinOutSet(GPIO_LED1_PORT, GPIO_LED1_PIN);		//red light on
-	g_bflagWakeup = true;
+
 	g_nCurTask = TASK_SLEEP;
 	fMsg = false;
 //==========================
 	if (g_bStartInstal)
 	{
+//		logd("should start installation");
 		g_wCurMode = MODE_INSTALLATION;
 		g_nCurTask = TASK_WAIT;
 		g_bStartInstal = false;
-		rtcTickCnt = SLOT_INTERVAL_SEC * INSTALLATION_CYCLES * APP_RTC_FREQ_HZ;	// set length of installation time: Must be duplicates of 20 - like slot length.
+		rtcTickCnt = ((SLOT_INTERVAL_SEC * INSTALLATION_CYCLES) -1) * APP_RTC_FREQ_HZ;	// set length of installation time: Must be duplicates of 20 - like slot length.
 		return;
 	}
 	// if time to listen for irrigation sensor
@@ -615,13 +619,24 @@ void RTC_TimeSlot()
 		g_nCurTask = TASK_WAIT;
 		return;
 	}
+
 	// if time to send data to logger
 	if (g_nCurTimeSlot == g_nHubSlot)
 	{
 	  g_wCurMode = MODE_SENDING;
 	  g_nCurTask = TASK_DO_JOB;
 	  g_nRetryCnt = 0;
+//	  g_bIsMoreData = false;
 	}
+//	logd("MODE: %d, TASK %d: ",g_wCurMode ,g_nCurTask);
+}
+
+void RTC_TimeSlot()
+{
+	g_nCurTimeSlot++;
+
+	g_bflagWakeup = true;
+	HandleTimeSlot();
 }
 
 uint8_t GetFirstBusyCell()
@@ -903,7 +918,8 @@ bool ParseMsg()
 				uint16_t tmp = msg.DataPayload.m_battery;//Bytes2Int(&NewMsgStack[gReadStack][FIRST_FIELD_LEN+12]);
 				// if its installation mode but the sensor was known already or its normal listening but 3rd time sending
 				if  (((g_wCurMode == MODE_INSTALLATION) && (bNewSensor == false) && (msg.Header.m_addressee == DEFAULT_ID))
-						|| ((g_wCurMode == MODE_LISTENING) && ((tmp & 0x3000) >= 0x3000)))
+						|| ((g_wCurMode == MODE_LISTENING) && ((tmp & 0x3000) >= 0x3000))
+						|| (MySensorsArr[senIndex].slot.index != g_nCurTimeSlot))
 					nSlot = SwapSlot(senIndex);
 			}
 			//Build response
@@ -1008,9 +1024,9 @@ uint8_t GetSensorData(uint8_t senIndex, uint8_t* tmp)
 
 uint8_t BuildDataMsg()
 {
-	uint8_t bufIndex = 0,/*INDEX_DATA,*/ senIndex = 0, i =0;
-//	g_bIsMoreData = false;
+	uint8_t bufIndex = 0,/*INDEX_DATA,*/ senIndex = 0 , i =0;
 	g_nRetryCnt = 0;
+	g_bIsMoreData = false;
 	logd("BuildDataMsg. g_LoggerID= %d", g_LoggerID);
 
 	msg.Header.m_Header = HEADER_SND_DATA;
@@ -1018,6 +1034,8 @@ uint8_t BuildDataMsg()
 	msg.Header.m_ID = myData.m_ID;
 	msg.HubPayload.m_battery = g_iBtr;
 	msg.HubPayload.m_index = 1;
+
+	//senIndex = GetNextSensor(senIndex);
 
 	//set data
 	do
@@ -1027,29 +1045,40 @@ uint8_t BuildDataMsg()
 		if (senIndex < MAX_DATA)
 		{
 			i = GetSensorData(senIndex, &msg.HubPayload.m_data[bufIndex]);//&tmp[0]);
-			if (((i + bufIndex) < MAX_PAYLOAD_LEN) && (i > 0))
+			if (i > 0)
 			{
-				bufIndex += i;
-				MySensorsArr[senIndex].Status = SEN_STATUS_SEND_DATA;
-				logd("add %d bytes to buffer. total len is: %d", i, bufIndex);
+				if (((i + bufIndex) < MAX_PAYLOAD_LEN))
+				{
+					bufIndex += i;
+					MySensorsArr[senIndex].Status = SEN_STATUS_SEND_DATA;
+					logd("add %d bytes to buffer. total len is: %d", i, bufIndex);
+					senIndex++;
+				}
+				else
+					g_bIsMoreData = true;
 			}
+			else
+				senIndex++;
 		}
-		senIndex++;
-	}
-	while (/*((bufIndex + 12) < MAX_PAYLOAD_LEN) && */(senIndex < MAX_DATA));
-	// if no data at all - write 0 as payload size
+	}//end of while
+	while (((bufIndex + 12) < MAX_PAYLOAD_LEN) && (senIndex < MAX_DATA) && (g_bIsMoreData == false));
+
+	senIndex = GetNextSensor(senIndex);
+
+	// if no data at all - write 0 as payload size. but if no data after already one packet sent - do not send nothing
 	if ((g_bOnReset) || (i == 0))
 	{
 		msg.HubPayload.m_data[0] = 0;
 		bufIndex = 1;
 		printMsg("empty");
 	}
+
 	// if there is more datato send but not enough space - mark flag
 	if ((i > 0) && (senIndex < MAX_DATA))
 		g_bIsMoreData = true;
 	// write size
 	msg.Header.m_size = sizeof(msg.Header) + bufIndex + 4; //4=2 bytes for m_battery + 1 byte for m_index + CS
-	printMsg1((uint8_t*)&msg, msg.Header.m_size);
+	//printMsg1((uint8_t*)&msg, msg.Header.m_size);
 	return bufIndex;
 }
 
@@ -1238,7 +1267,7 @@ int main(void)
 
   Ecode_t res = APP_InitNvm();
 #ifdef DEBUG_MODE
-  myData.m_ID = 590000;	//710136;	//
+  myData.m_ID = 710136;	//590000;	//713488;	//
   res =  APP_StoreData(PAGE_ID_TYPE);
   	  if (res != ECODE_EMDRV_NVM_OK)
   		  logd("failed saving info %d", res);
@@ -1252,6 +1281,7 @@ int main(void)
 //  if (res != ECODE_EMDRV_NVM_OK)
 //	  logd("failed restoring data %d", res);
   logd("Hi! ID is: %d", myData.m_ID);
+  g_LoggerID = DEFAULT_ID;
   if (myData.m_ID == 0)
   {
 	  g_wCurMode = MODE_CONFIGURE;
@@ -1405,7 +1435,7 @@ int main(void)
     	printMsg("do job. ");//cur mode is:");
     	//PrintIntNum((int32_t)g_wCurMode);
     	BuildTx();
-		 GPIO_PinOutSet(GPIO_LED1_PORT,GPIO_LED1_PIN);
+		GPIO_PinOutSet(GPIO_LED1_PORT,GPIO_LED1_PIN);
     	g_nCurTask = TASK_SEND;
 
     }
@@ -1414,7 +1444,7 @@ int main(void)
     	BufferEnvelopeTransmit(appRadioHandle);
 		g_nCurTask = TASK_WAIT;
 		printMsg("wait");
-		rtcTickCnt = 30;
+		rtcTickCnt = 20;
 		if (g_bOnReset)
 			rtcTickCnt = 50;
     	break;
@@ -1423,18 +1453,14 @@ int main(void)
      	GoToSleep();
      	if (g_bflagWakeup == true)
      	{
-//     		bool bTimerRun;
-     		WakeupRadio();
-//     		uint8_t i;
-//     		uint32_t tmp1, temp = 1;//(int)pow(2, g_nCurTimeSlot);
-//     		for (i = 0; i < g_nCurTimeSlot; i++)
-//     			temp *= 2;
-//     		tmp1 = g_lMySlots & temp;
-//     		logd("current slot: %d, temp = %d, g_lMySlots = %d, (g_lMySlots & temp) = %d", g_nCurTimeSlot, temp, g_lMySlots, tmp1);
-
+//     		if (g_iBtnPressed == 0)
+//     			HandleTimeSlot();
+     		logd("SLOT: %d, MODE: %d, TASK %d: ",g_nCurTimeSlot ,g_wCurMode ,g_nCurTask);
+//			logd("next task is: %d", g_nCurTask);
     		if (g_nCurTask != TASK_SLEEP)
     		{
-    			logd("next task is: %d", g_nCurTask);
+    			WakeupRadio();
+//    			logd("next task is: %d", g_nCurTask);
 
     			StartTickTimer();
     		}
@@ -1485,21 +1511,22 @@ static void appPacketReceivedCallback(EZRADIODRV_Handle_t handle, Ecode_t status
   if ( status == ECODE_EMDRV_EZRADIODRV_OK )
   {
 	  ezradio_cmd_reply_t ezradioReply;
-	  	  //ezradio_part_info(&ezradioReply);
-	  	  ezradio_get_modem_status(0 ,&ezradioReply);
-	  	  g_nRssi = ezradioReply.GET_MODEM_STATUS.LATCH_RSSI;
-	  	  gWriteStack = GetFirstEmptyCell();
-	  	  if (gWriteStack == MAX_MSG_IN_STACK)
-	  	  {
-	  		  //printMsg("doesn't have empty cell. missed msg \r\n");
-	  		  return;
-	  	  }
-
-	  	  for (int8_t i = 0; i <= /*MAX_MSG_LEN*/radioRxPkt[0]+1; i++)
-	  		  NewMsgStack[gWriteStack][i] = radioRxPkt[i];
-	  	  NewMsgStack[gWriteStack][INDEX_RSSI] = g_nRssi;
-	  	  NewMsgStack[gWriteStack][INDEX_STATUS] = CELL_BUSY;
-		  fDataIn = true;
+	  //ezradio_part_info(&ezradioReply);
+	  ezradio_get_modem_status(0 ,&ezradioReply);
+	  g_nRssi = ezradioReply.GET_MODEM_STATUS.LATCH_RSSI;
+	  gWriteStack = GetFirstEmptyCell();
+	  if (gWriteStack == MAX_MSG_IN_STACK)
+	  {
+		  //printMsg("doesn't have empty cell. missed msg \r\n");
+		  return;
+	  }
+	  if ((radioRxPkt[0]+1) > MAX_MSG_LEN)
+		  return;
+	  for (int8_t i = 0; i <= /*MAX_MSG_LEN*/radioRxPkt[0]+1; i++)
+		  NewMsgStack[gWriteStack][i] = radioRxPkt[i];
+	  NewMsgStack[gWriteStack][INDEX_RSSI] = g_nRssi;
+	  NewMsgStack[gWriteStack][INDEX_STATUS] = CELL_BUSY;
+	  fDataIn = true;
     /* Read out and print received packet data:
      *  - print 'ACK' in case of ACK was received
      *  - print the data if some other data was received. */

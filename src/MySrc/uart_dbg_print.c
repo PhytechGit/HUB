@@ -108,6 +108,7 @@ void printMsg1(uint8_t* str, int len)
 	uint8_t i;
 	for (i = 0; i < len; i++)
 		logTx(*str++);
+	logStrRaw("\r\n");
 #endif
 }
 
