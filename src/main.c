@@ -153,7 +153,7 @@ static RTCDRV_TimerID_t rtc20SecTimer;
 static volatile uint16_t rtcTickCnt;
 //static volatile uint16_t rtcTickCntEcho;
 
-const uint8_t Version[] = {'H',7,19,1};
+const uint8_t Version[] = {'H',8,19,27};
 
 sensor MySensorsArr[MAX_DATA];
 uint32_t			g_LoggerID;// = 0xFFFFFFFF;
@@ -178,6 +178,8 @@ uint8_t				g_nMin;
 uint8_t				g_nSec;
 uint8_t				g_nRetryCnt;
 bool fMsg;
+bool				g_bListen4Alert;
+bool 				g_bAlert2Send;
 
 Uint32toBytes temp32bituint;
 
@@ -571,6 +573,7 @@ void HandleTimeSlot()
 {
 //	logd("SLOT: %d. HOUR: %d",g_nCurTimeSlot, g_nHour);
 	// end of hour
+	g_bListen4Alert = false;
 	if (g_nCurTimeSlot == MAX_SLOT)
 	{
 		MoveData2Hstr();
@@ -609,6 +612,8 @@ void HandleTimeSlot()
 	{
 		g_wCurMode = MODE_LISTENING;
 		g_nCurTask = TASK_WAIT;
+		g_bListen4Alert = true;
+		g_bAlert2Send = false;
 		return;
 	}
 
@@ -626,7 +631,15 @@ void HandleTimeSlot()
 	  g_wCurMode = MODE_SENDING;
 	  g_nCurTask = TASK_DO_JOB;
 	  g_nRetryCnt = 0;
+	  return;
 //	  g_bIsMoreData = false;
+	}
+	if (((g_nCurTimeSlot % 15) == 3) && (g_bAlert2Send == true))
+	{
+	  g_wCurMode = MODE_SENDING;
+	  g_nCurTask = TASK_DO_JOB;
+	  g_nRetryCnt = 0;
+		return;
 	}
 //	logd("MODE: %d, TASK %d: ",g_wCurMode ,g_nCurTask);
 }
@@ -704,7 +717,7 @@ uint16_t GetSecToConnect(uint8_t nSlot)
 	else
 		nSlots2Wait = MAX_SLOT - (g_nCurTimeSlot+1) + nSlot;
 
-	return (SLOT_INTERVAL_SEC * nSlots2Wait) + ((rtcTickCnt / APP_RTC_FREQ_HZ) % SLOT_INTERVAL_SEC) ;	// delete(add 1 second - 2 b on the safe side)
+	return (SLOT_INTERVAL_SEC * nSlots2Wait) + ((rtcTickCnt / APP_RTC_FREQ_HZ) % SLOT_INTERVAL_SEC);// + 1 ;	// add 1 second - because installation time is 1 sec less than SLOT_INTERVAL_SEC
 }
 
 uint8_t GetNextFreeSlot(uint8_t senType)
@@ -875,7 +888,7 @@ bool ParseMsg()
 			{
 				printMsg("not my sensor");
 				//TODO - define RSSI limit for answer
-				if ((g_wCurMode == MODE_INSTALLATION) /*&& NewMsgStack[gReadStack][INDEX_RSSI] > XXX)*/)
+				if ((g_wCurMode == MODE_INSTALLATION) /*&& NewMsgStack[gReadStack][INDEX_RSSI] > XXX) || (msg.Header.m_addressee == myData.m_ID)*/)
 				{
 					senIndex = InsertNewSensor(msg.Header.m_ID, msg.DataPayload.m_type);
 					//logd("senIndex = %d, slot status %d" , senIndex, MySensorsArr[senIndex].slot.status);
@@ -893,16 +906,33 @@ bool ParseMsg()
 				else
 					break;
 			}
+			SensorStatus tmpStatus;
 			if (msg.Header.m_Header == HEADER_MSR)
 			{
+				tmpStatus = MySensorsArr[senIndex].Status;
 				//Copy(&MySensorsArr[senIndex].data[0], ((uint8_t *) &msg.DataPayload), 4);
 				MySensorsArr[senIndex].msr = msg.DataPayload.m_data;
 				MySensorsArr[senIndex].btr = msg.DataPayload.m_battery;
 				MySensorsArr[senIndex].type = msg.DataPayload.m_type;
 				MySensorsArr[senIndex].rssi = NewMsgStack[gReadStack][INDEX_RSSI];
 				MySensorsArr[senIndex].Status = SEN_STATUS_GOT_DATA;
+				if ((g_bListen4Alert == true) && (MySensorsArr[senIndex].type == TYPE_DER))//todo - change type
+				{
+					MySensorsArr[senIndex].Status = SEN_STATUS_GOT_ALERT_DATA;
+					logd("alert data");
+					g_bAlert2Send = true;
+				}
 				logd("data   saved: %d, btr: %d, rssi: %d type: %d", MySensorsArr[senIndex].msr
 						, MySensorsArr[senIndex].btr, MySensorsArr[senIndex].rssi, MySensorsArr[senIndex].type);
+				uint16_t tmp = msg.DataPayload.m_battery;//Bytes2Int(&NewMsgStack[gReadStack][FIRST_FIELD_LEN+12]);
+				// if its installation mode but the sensor was known already or
+				//its normal listening but 3rd time sending or send not in its slot
+				if  (((g_wCurMode == MODE_INSTALLATION) && (bNewSensor == false) && (msg.Header.m_addressee == DEFAULT_ID))
+						|| ((g_wCurMode == MODE_LISTENING) && (((tmp & 0x3000) >= 0x3000)
+						|| (MySensorsArr[senIndex].slot.index != g_nCurTimeSlot))))
+					if (g_bListen4Alert == false)
+						if (tmpStatus == SEN_STATUS_CELL_EMPTY)	// first data entry
+							nSlot = SwapSlot(senIndex);
 			}
 			if (NewMsgStack[gReadStack][INDEX_HEADER] == HEADER_HST)
 			{
@@ -913,15 +943,6 @@ bool ParseMsg()
 			}
 			MySensorsArr[senIndex].DailyCnct = true;
 //			MySensorsArr[senIndex].slot.status = SLOT_STATUS_BUSY;
-			if (msg.Header.m_Header == HEADER_MSR)
-			{
-				uint16_t tmp = msg.DataPayload.m_battery;//Bytes2Int(&NewMsgStack[gReadStack][FIRST_FIELD_LEN+12]);
-				// if its installation mode but the sensor was known already or its normal listening but 3rd time sending
-				if  (((g_wCurMode == MODE_INSTALLATION) && (bNewSensor == false) && (msg.Header.m_addressee == DEFAULT_ID))
-						|| ((g_wCurMode == MODE_LISTENING) && ((tmp & 0x3000) >= 0x3000))
-						|| (MySensorsArr[senIndex].slot.index != g_nCurTimeSlot))
-					nSlot = SwapSlot(senIndex);
-			}
 			//Build response
 //			logd("response for header: %d",msg.Header.m_Header );
 			msg.Header.m_Header++;
@@ -946,10 +967,10 @@ bool ParseMsg()
 	}
 	case  MODE_SENDING:
 	{
-		logd("Ack for data sending. from logger: %d. my logger %d", msg.Header.m_ID, g_LoggerID);
 		//checif its the right message type
 		if (msg.Header.m_Header != HEADER_SND_DATA_ACK)
 			break;
+		logd("Ack for data sending. from logger: %d. my logger %d", msg.Header.m_ID, g_LoggerID);
 		if (msg.Header.m_addressee != myData.m_ID)
 			break;
 		g_nMin = msg.RecAckPayload.m_min;//NewMsgStack[gReadStack][INDEX_MIN];
@@ -994,6 +1015,8 @@ uint8_t GetSensorData(uint8_t senIndex, uint8_t* tmp)
 	uint8_t i;//, res = 0;
 
 	if ((MySensorsArr[senIndex].ID == 0) || (MySensorsArr[senIndex].Status == SEN_STATUS_CELL_EMPTY))//(MySensorsArr[senIndex].IsData)) //&& (!MySensorsArr[senIndex].IsHstr)))
+		return 0;
+	if ((g_bAlert2Send == true) && (MySensorsArr[senIndex].Status != SEN_STATUS_GOT_ALERT_DATA))
 		return 0;
 	tmp[0] = 12;
 	tmp[1] = TYPE_DATA;
@@ -1066,14 +1089,14 @@ uint8_t BuildDataMsg()
 	senIndex = GetNextSensor(senIndex);
 
 	// if no data at all - write 0 as payload size. but if no data after already one packet sent - do not send nothing
-	if ((g_bOnReset) || (i == 0))
+	if ((g_bOnReset) || (bufIndex == 0))//(i == 0))
 	{
 		msg.HubPayload.m_data[0] = 0;
 		bufIndex = 1;
 		printMsg("empty");
 	}
 
-	// if there is more datato send but not enough space - mark flag
+	// if there is more data to send but not enough space - mark flag
 	if ((i > 0) && (senIndex < MAX_DATA))
 		g_bIsMoreData = true;
 	// write size
@@ -1109,7 +1132,6 @@ void BufferEnvelopeTransmit(EZRADIODRV_Handle_t handle)
 	uint8_t i;
 	uint8_t bufLen;
 
-	logd("BufferEnvelopeTransmit. g_LoggerID = %d", g_LoggerID);
 	bufLen = msg.Header.m_size;//radioTxPkt[INDEX_SIZE];
 	for ( i = 0; i < bufLen-1; i++)
 		radioTxPkt[FIRST_FIELD_LEN+i] = (((const uint8_t *) &msg) [i]);
@@ -1117,6 +1139,7 @@ void BufferEnvelopeTransmit(EZRADIODRV_Handle_t handle)
 	radioTxPkt[FIRST_FIELD] = bufLen;
 
 	radioTxPkt[bufLen] = GetCheckSum(&radioTxPkt[INDEX_HEADER], bufLen-1);
+	logd("BufferEnvelopeTransmit: SIZE: %d. CS: %d ", bufLen, radioTxPkt[bufLen]);//g_LoggerID = %d", g_LoggerID);
 
 	printMsg1(radioTxPkt, bufLen+1);
 	EZRADIODRV_FieldLength_t fieldLen = {1, bufLen, 0, 0, 0};
@@ -1267,7 +1290,7 @@ int main(void)
 
   Ecode_t res = APP_InitNvm();
 #ifdef DEBUG_MODE
-  myData.m_ID = 710136;	//590000;	//713488;	//
+  myData.m_ID = 713488;	//710136;	//590000;	//
   res =  APP_StoreData(PAGE_ID_TYPE);
   	  if (res != ECODE_EMDRV_NVM_OK)
   		  logd("failed saving info %d", res);
@@ -1375,7 +1398,7 @@ int main(void)
     case TASK_WAIT:
     	if ((!fMsg) && (g_wCurMode == MODE_LISTENING))
     	{
-    		logd("listening");
+    		logd("listening SLOT %d", g_nCurTimeSlot);
     		fMsg = true;
     	}
 		if (fDataIn)
@@ -1389,6 +1412,11 @@ int main(void)
 					{
 						//ezradioStartTransmitConfigured( appRadioHandle, radioTxPkt );
 						BufferEnvelopeTransmit(appRadioHandle);
+//						if (g_bListen4Alert == true)
+//						{
+//							g_nCurTask = TASK_DO_JOB;
+//							g_wCurMode = MODE_SENDING;
+//						}
 					}
 					else
 					{

@@ -58,6 +58,7 @@ typedef enum _SensorStatus
 	SEN_STATUS_GOT_DATA,
 	SEN_STATUS_SEND_DATA,
 	SEN_STATUS_CELL_EMPTY,
+	SEN_STATUS_GOT_ALERT_DATA,
 }SensorStatus;
 
 typedef enum _Task
