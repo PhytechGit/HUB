@@ -12,7 +12,7 @@ typedef struct _ProtocolHeader
 //	uint8_t	m_cs;
 } PrtlHdr;
 
-//0xBA
+//0xB1
 typedef struct _PayloadSenData
 {
 	uint16_t	m_data;
@@ -21,11 +21,17 @@ typedef struct _PayloadSenData
 	uint8_t		m_index;
 } PayloadSenData;
 
-//0xBC
+//0xB3
 typedef struct _PayloadSenHistory
 {
 	int16_t		m_history[5];
 } PayloadSenHistory;
+
+//
+//typedef struct _PayloadSenVersion
+//{
+//	int8_t		m_version[4];
+//} PayloadSenVersion;
 
 //0xBB / 0xBD
 typedef struct _PayloadHubAck
@@ -59,6 +65,7 @@ typedef struct _Sen_Hub_Msg
 	{
 		PayloadSenData 		DataPayload;
 		PayloadSenHistory	HstrPayload;
+//		PayloadSenVersion	VerPayload;
 		PayloadHubAck		AckPayload;
 		PayloadHubData		HubPayload;
 		PayloadRecAck		RecAckPayload;
